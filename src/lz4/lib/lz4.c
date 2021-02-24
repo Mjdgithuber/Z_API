@@ -666,6 +666,10 @@ typedef enum { noDict = 0, withPrefix64k, usingExtDict, usingDictCtx } dict_dire
 typedef enum { noDictIssue = 0, dictSmall } dictIssue_directive;
 
 
+/* MJD Added */
+typedef enum { returnDefault, returnInputConsumed } return_directive;
+
+
 /*-************************************
 *  Local Utils
 **************************************/
@@ -1728,6 +1732,11 @@ read_variable_length(const BYTE**ip, const BYTE* lencheck,
     return length;
 }
 
+
+/*****************
+ *
+ * MJD Edited Function! returnInputConsumed added here
+ ********************************************/
 /*! LZ4_decompress_generic() :
  *  This generic decompression function covers all use cases.
  *  It shall be instantiated several times, using different sets of directives.
@@ -1741,12 +1750,13 @@ LZ4_decompress_generic(
                  int srcSize,
                  int outputSize,         /* If endOnInput==endOnInputSize, this value is `dstCapacity` */
 
-                 endCondition_directive endOnInput,   /* endOnOutputSize, endOnInputSize */
-                 earlyEnd_directive partialDecoding,  /* full, partial */
-                 dict_directive dict,                 /* noDict, withPrefix64k, usingExtDict */
+                 endCondition_directive endOnInput,    /* endOnOutputSize, endOnInputSize */
+                 earlyEnd_directive partialDecoding,   /* full, partial */
+                 dict_directive dict,                  /* noDict, withPrefix64k, usingExtDict */
+                 return_directive returnDirective, /* defaultReturn, returnInputConsumed added by MJD */
                  const BYTE* const lowPrefix,  /* always <= dst, == dst when no prefix */
                  const BYTE* const dictStart,  /* only if dict==usingExtDict */
-                 const size_t dictSize         /* note : = 0 if noDict */
+                 const size_t dictSize        /* note : = 0 if noDict */
                  )
 {
     if (src == NULL) { return -1; }
@@ -2151,7 +2161,7 @@ LZ4_decompress_generic(
         }
 
         /* end of decoding */
-        if (endOnInput) {
+        if (endOnInput && /* MJD Added */ !returnDirective /* */) {
             DEBUGLOG(5, "decoded %i bytes", (int) (((char*)op)-dst));
            return (int) (((char*)op)-dst);     /* Nb of output bytes decoded */
        } else {
@@ -2171,7 +2181,7 @@ LZ4_FORCE_O2
 int LZ4_decompress_safe(const char* source, char* dest, int compressedSize, int maxDecompressedSize)
 {
     return LZ4_decompress_generic(source, dest, compressedSize, maxDecompressedSize,
-                                  endOnInputSize, decode_full_block, noDict,
+                                  endOnInputSize, decode_full_block, noDict, returnDefault,
                                   (BYTE*)dest, NULL, 0);
 }
 
@@ -2181,7 +2191,7 @@ int LZ4_decompress_safe_partial(const char* src, char* dst, int compressedSize, 
     dstCapacity = MIN(targetOutputSize, dstCapacity);
     return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
                                   endOnInputSize, partial_decode,
-                                  noDict, (BYTE*)dst, NULL, 0);
+                                  noDict, returnDefault, (BYTE*)dst, NULL, 0);
 }
 
 LZ4_FORCE_O2
@@ -2189,17 +2199,31 @@ int LZ4_decompress_fast(const char* source, char* dest, int originalSize)
 {
     return LZ4_decompress_generic(source, dest, 0, originalSize,
                                   endOnOutputSize, decode_full_block, withPrefix64k,
-                                  (BYTE*)dest - 64 KB, NULL, 0);
+                                  returnDefault, (BYTE*)dest - 64 KB, NULL, 0);
 }
 
 /*===== Instantiate a few more decoding cases, used more than once. =====*/
+
+
+
+/*****************
+ *
+ * MJD Added Function!
+ ********************************************/
+// add partial cases here!
+
+
+
+
+
+
 
 LZ4_FORCE_O2 /* Exported, an obsolete API function. */
 int LZ4_decompress_safe_withPrefix64k(const char* source, char* dest, int compressedSize, int maxOutputSize)
 {
     return LZ4_decompress_generic(source, dest, compressedSize, maxOutputSize,
                                   endOnInputSize, decode_full_block, withPrefix64k,
-                                  (BYTE*)dest - 64 KB, NULL, 0);
+                                  returnDefault, (BYTE*)dest - 64 KB, NULL, 0);
 }
 
 /* Another obsolete API function, paired with the previous one. */
@@ -2216,7 +2240,7 @@ static int LZ4_decompress_safe_withSmallPrefix(const char* source, char* dest, i
 {
     return LZ4_decompress_generic(source, dest, compressedSize, maxOutputSize,
                                   endOnInputSize, decode_full_block, noDict,
-                                  (BYTE*)dest-prefixSize, NULL, 0);
+                                  returnDefault, (BYTE*)dest-prefixSize, NULL, 0);
 }
 
 LZ4_FORCE_O2
@@ -2226,7 +2250,7 @@ int LZ4_decompress_safe_forceExtDict(const char* source, char* dest,
 {
     return LZ4_decompress_generic(source, dest, compressedSize, maxOutputSize,
                                   endOnInputSize, decode_full_block, usingExtDict,
-                                  (BYTE*)dest, (const BYTE*)dictStart, dictSize);
+                                  returnDefault, (BYTE*)dest, (const BYTE*)dictStart, dictSize);
 }
 
 LZ4_FORCE_O2
@@ -2235,7 +2259,7 @@ static int LZ4_decompress_fast_extDict(const char* source, char* dest, int origi
 {
     return LZ4_decompress_generic(source, dest, 0, originalSize,
                                   endOnOutputSize, decode_full_block, usingExtDict,
-                                  (BYTE*)dest, (const BYTE*)dictStart, dictSize);
+                                  returnDefault, (BYTE*)dest, (const BYTE*)dictStart, dictSize);
 }
 
 /* The "double dictionary" mode, for use with e.g. ring buffers: the first part
@@ -2248,7 +2272,7 @@ int LZ4_decompress_safe_doubleDict(const char* source, char* dest, int compresse
 {
     return LZ4_decompress_generic(source, dest, compressedSize, maxOutputSize,
                                   endOnInputSize, decode_full_block, usingExtDict,
-                                  (BYTE*)dest-prefixSize, (const BYTE*)dictStart, dictSize);
+                                  returnDefault, (BYTE*)dest-prefixSize, (const BYTE*)dictStart, dictSize);
 }
 
 LZ4_FORCE_INLINE
@@ -2257,7 +2281,7 @@ int LZ4_decompress_fast_doubleDict(const char* source, char* dest, int originalS
 {
     return LZ4_decompress_generic(source, dest, 0, originalSize,
                                   endOnOutputSize, decode_full_block, usingExtDict,
-                                  (BYTE*)dest-prefixSize, (const BYTE*)dictStart, dictSize);
+                                  returnDefault, (BYTE*)dest-prefixSize, (const BYTE*)dictStart, dictSize);
 }
 
 /*===== streaming decompression functions =====*/
@@ -2355,8 +2379,60 @@ int LZ4_decompress_safe_continue (LZ4_streamDecode_t* LZ4_streamDecode, const ch
         lz4sd->prefixEnd  = (BYTE*)dest + result;
     }
 
-    return result;
+
 }
+
+
+
+/*****************
+ *
+ * MJD Added Function!
+ ********************************************/
+/*
+*_continue() :
+    These decoding functions allow decompression of multiple blocks in "streaming" mode.
+    Previously decoded blocks must still be available at the memory position where they were decoded.
+    If it's not possible, save the relevant part of decoded data into a safe buffer,
+    and indicate where it stands using LZ4_setStreamDecode()
+*/
+LZ4_FORCE_O2
+int LZ4_decompress_safe_continue_unkown_size (LZ4_streamDecode_t* LZ4_streamDecode, const char* source, char* dest, int compressedSize, int maxOutputSize)
+{
+    LZ4_streamDecode_t_internal* lz4sd = &LZ4_streamDecode->internal_donotuse;
+    int result;
+
+    if (lz4sd->prefixSize == 0) {
+        /* The first call, no dictionary yet. */
+        assert(lz4sd->extDictSize == 0);
+        result = LZ4_decompress_safe(source, dest, compressedSize, maxOutputSize);
+        if (result <= 0) return result;
+        lz4sd->prefixSize = (size_t)result;
+        lz4sd->prefixEnd = (BYTE*)dest + result;
+    } else if (lz4sd->prefixEnd == (BYTE*)dest) {
+        /* They're rolling the current segment. */
+        if (lz4sd->prefixSize >= 64 KB - 1)
+            result = LZ4_decompress_safe_withPrefix64k(source, dest, compressedSize, maxOutputSize);
+        else if (lz4sd->extDictSize == 0)
+            result = LZ4_decompress_safe_withSmallPrefix(source, dest, compressedSize, maxOutputSize,
+                                                         lz4sd->prefixSize);
+        else
+            result = LZ4_decompress_safe_doubleDict(source, dest, compressedSize, maxOutputSize,
+                                                    lz4sd->prefixSize, lz4sd->externalDict, lz4sd->extDictSize);
+        if (result <= 0) return result;
+        lz4sd->prefixSize += (size_t)result;
+        lz4sd->prefixEnd  += result;
+    } else {
+        /* The buffer wraps around, or they're switching to another buffer. */
+        lz4sd->extDictSize = lz4sd->prefixSize;
+        lz4sd->externalDict = lz4sd->prefixEnd - lz4sd->extDictSize;
+        result = LZ4_decompress_safe_forceExtDict(source, dest, compressedSize, maxOutputSize,
+                                                  lz4sd->externalDict, lz4sd->extDictSize);
+        if (result <= 0) return result;
+        lz4sd->prefixSize = (size_t)result;
+        lz4sd->prefixEnd  = (BYTE*)dest + result;
+    }
+}
+
 
 LZ4_FORCE_O2
 int LZ4_decompress_fast_continue (LZ4_streamDecode_t* LZ4_streamDecode, const char* source, char* dest, int originalSize)
