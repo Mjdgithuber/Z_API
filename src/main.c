@@ -24,6 +24,7 @@ void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsign
 		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, h->unit_size, dest_size - (c_dest - dest), 1);
 		c_src += h->unit_size;
 		c_dest += c_bytes;
+		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, h->units, h->unit_size, c_bytes);
 	}
 
 	(*size) = c_dest - dest;
@@ -38,11 +39,13 @@ void decompress_block(BYTE* src, BYTE* dest) {
 	BYTE *c_src = src + sizeof(header);
 	BYTE *c_dest = dest;
 	for(i = 0; i < h->units; i++) {
-		printf("Decompressing unit %u\n", i);
+		//printf("Decompressing unit %u\n", i);
 		/*result = LZ4_decompress_safe_continue(lz4_sd, c_src, c_dest, 1000, h->unit_size);*/
 		result = LZ4_decompress_safe_continue_unkown_size (lz4_sd, c_src, c_dest, h->unit_size, 512);
+		c_src += result;
+		c_dest += h->unit_size;
 		printf("Decompressed unit %u with compressed size of result %u\n", i, result);
-		break;
+		//break;
 	}
 
 	LZ4_freeStreamDecode(lz4_sd);
