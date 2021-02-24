@@ -2212,8 +2212,17 @@ int LZ4_decompress_fast(const char* source, char* dest, int originalSize)
  ********************************************/
 // add partial cases here!
 
-
-
+/* MJD added */
+LZ4_FORCE_O2
+int LZ4_decompress_safe_unkown_size(const char* src, char* dst, int uncompressedSize, int dstCapacity)
+{
+    /* will work as long as compressedSize is >= its real size */
+    int compressedSize = LZ4_COMPRESSBOUND(uncompressedSize);
+    dstCapacity = MIN(uncompressedSize, dstCapacity);
+    return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
+                                  endOnInputSize, partial_decode,
+                                  noDict, returnInputConsumed, (BYTE*)dst, NULL, 0);
+}
 
 
 
