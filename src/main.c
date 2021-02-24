@@ -5,9 +5,12 @@
 
 #include "lz4.h"
 
+#ifdef HC_
+#include "lz4hc.h"
+#endif
+
+
 typedef unsigned char BYTE;
-
-
 
 typedef struct {
 	short int unit_size; /* in bytes */
@@ -17,18 +20,33 @@ typedef struct {
 void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size) {
 	unsigned i;
 
+#ifndef HC_
 	LZ4_stream_t* const lz4_s = LZ4_createStream();
+#else
+	LZ4_streamHC_t lz4Stream_body = { 0 };
+	LZ4_streamHC_t* lz4_s = &lz4Stream_body;
+	LZ4_setCompressionLevel(lz4_s, LZ4HC_CLEVEL_MIN);
+#endif
+
 	BYTE *c_src = src;   /* current data source */
 	BYTE *c_dest = dest; /* current compressed destination */
 	for(i = 0; i < h->units; i++) {
+#ifndef HC_
 		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, h->unit_size, dest_size - (c_dest - dest), 1);
+#else
+		const int c_bytes = LZ4_compress_HC_continue(lz4_s, c_src, c_dest, h->unit_size, dest_size - (c_dest - dest));
+#endif
 		c_src += h->unit_size;
 		c_dest += c_bytes;
 		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, h->units, h->unit_size, c_bytes);
 	}
 
 	(*size) = c_dest - dest;
+#ifndef HC_
 	LZ4_freeStream(lz4_s);
+#else
+	//LZ4_freeStreamHC(lz4_s);
+#endif
 }
 
 void decompress_block(BYTE* src, BYTE* dest) {
@@ -63,16 +81,16 @@ void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest,
 
 int main() {
 	FILE* fp;
-	BYTE in[256];
-	BYTE out[256*2];	
+	BYTE in[2048];
+	BYTE out[256*16];	
 
 	fp = fopen("test_compress.txt", "r");
 	
-	int num = fread(in, 1, 256, fp);
+	int num = fread(in, 1, 2048, fp);
 	printf("Read %d chars from input!\n", num);
 	
 	int size;
-	generate_block(in, 64, 4, out, 256*2, &size);
+	generate_block(in, 256, 8, out, 256*16, &size);
 
 	printf("Output compressed size %d!\n", size);
 
