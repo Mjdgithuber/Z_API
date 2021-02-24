@@ -2404,19 +2404,19 @@ int LZ4_decompress_safe_continue_unkown_size (LZ4_streamDecode_t* LZ4_streamDeco
     if (lz4sd->prefixSize == 0) {
         /* The first call, no dictionary yet. */
         assert(lz4sd->extDictSize == 0);
-        result = LZ4_decompress_safe(source, dest, compressedSize, maxOutputSize);
+        result = LZ4_decompress_safe_unkown_size(source, dest, compressedSize, maxOutputSize);
         if (result <= 0) return result;
         lz4sd->prefixSize = (size_t)result;
         lz4sd->prefixEnd = (BYTE*)dest + result;
     } else if (lz4sd->prefixEnd == (BYTE*)dest) {
         /* They're rolling the current segment. */
         if (lz4sd->prefixSize >= 64 KB - 1)
-            result = LZ4_decompress_safe_withPrefix64k(source, dest, compressedSize, maxOutputSize);
+            result = LZ4_decompress_safe_withPrefix64k_unkown_size(source, dest, compressedSize, maxOutputSize);
         else if (lz4sd->extDictSize == 0)
-            result = LZ4_decompress_safe_withSmallPrefix(source, dest, compressedSize, maxOutputSize,
+            result = LZ4_decompress_safe_withSmallPrefix_unkown_size(source, dest, compressedSize, maxOutputSize,
                                                          lz4sd->prefixSize);
         else
-            result = LZ4_decompress_safe_doubleDict(source, dest, compressedSize, maxOutputSize,
+            result = LZ4_decompress_safe_doubleDict_unkown_size(source, dest, compressedSize, maxOutputSize,
                                                     lz4sd->prefixSize, lz4sd->externalDict, lz4sd->extDictSize);
         if (result <= 0) return result;
         lz4sd->prefixSize += (size_t)result;
@@ -2425,7 +2425,7 @@ int LZ4_decompress_safe_continue_unkown_size (LZ4_streamDecode_t* LZ4_streamDeco
         /* The buffer wraps around, or they're switching to another buffer. */
         lz4sd->extDictSize = lz4sd->prefixSize;
         lz4sd->externalDict = lz4sd->prefixEnd - lz4sd->extDictSize;
-        result = LZ4_decompress_safe_forceExtDict(source, dest, compressedSize, maxOutputSize,
+        result = LZ4_decompress_safe_forceExtDict_unkown_size(source, dest, compressedSize, maxOutputSize,
                                                   lz4sd->externalDict, lz4sd->extDictSize);
         if (result <= 0) return result;
         lz4sd->prefixSize = (size_t)result;
