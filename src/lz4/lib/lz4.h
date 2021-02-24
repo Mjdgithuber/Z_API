@@ -409,6 +409,11 @@ LZ4LIB_API int LZ4_decoderRingBufferSize(int maxBlockSize);
 LZ4LIB_API int LZ4_decompress_safe_continue (LZ4_streamDecode_t* LZ4_streamDecode, const char* src, char* dst, int srcSize, int dstCapacity);
 
 
+/* MJD added API function */
+LZ4LIB_API int LZ4_decompress_safe_continue_unkown_size (LZ4_streamDecode_t* LZ4_streamDecode, const char* source, char* dest, int uncompressedSize, int maxOutputSize);
+
+
+
 /*! LZ4_decompress_*_usingDict() :
  *  These decoding functions work the same as
  *  a combination of LZ4_setStreamDecode() followed by LZ4_decompress_*_continue()

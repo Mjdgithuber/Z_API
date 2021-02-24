@@ -205,6 +205,7 @@ void  LZ4_free(void* p);
 #endif
 
 #include <string.h>   /* memset, memcpy */
+#include <stdio.h>    /* MJD added for debug print TODO remove */
 #define MEM_INIT(p,v,s)   memset((p),(v),(s))
 
 
@@ -2232,7 +2233,7 @@ int LZ4_decompress_safe_withPrefix64k_unkown_size(const char* src, char* dst, in
     dstCapacity = MIN(uncompressedSize, dstCapacity);
     return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
                                   endOnInputSize, partial_decode, withPrefix64k,
-                                  returnInputConsumed, (BYTE*)dest - 64 KB, NULL, 0);
+                                  returnInputConsumed, (BYTE*)dst - 64 KB, NULL, 0);
 }
 
 /* MJD added TODO finish this function */
@@ -2243,7 +2244,7 @@ static int LZ4_decompress_safe_withSmallPrefix_unkown_size(const char* src, char
     dstCapacity = MIN(uncompressedSize, dstCapacity);
     return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
                                   endOnInputSize, partial_decode, noDict,
-                                  returnInputConsumed, (BYTE*)dest-prefixSize, NULL, 0);
+                                  returnInputConsumed, (BYTE*)dst-prefixSize, NULL, 0);
 }
 
 /* MJD added */
@@ -2464,25 +2465,30 @@ int LZ4_decompress_safe_continue_unkown_size (LZ4_streamDecode_t* LZ4_streamDeco
     } else if (lz4sd->prefixEnd == (BYTE*)dest) {
         /* They're rolling the current segment. */
         if (lz4sd->prefixSize >= 64 KB - 1)
-            result = LZ4_decompress_safe_withPrefix64k_unkown_size(source, dest, compressedSize, maxOutputSize);
+            result = LZ4_decompress_safe_withPrefix64k_unkown_size(source, dest, uncompressedSize, maxOutputSize);
         else if (lz4sd->extDictSize == 0)
-            result = LZ4_decompress_safe_withSmallPrefix_unkown_size(source, dest, compressedSize, maxOutputSize,
+            result = LZ4_decompress_safe_withSmallPrefix_unkown_size(source, dest, uncompressedSize, maxOutputSize,
                                                          lz4sd->prefixSize);
-        else
-            result = LZ4_decompress_safe_doubleDict_unkown_size(source, dest, compressedSize, maxOutputSize,
-                                                    lz4sd->prefixSize, lz4sd->externalDict, lz4sd->extDictSize);
+        else {
+            printf("Double dict with unkown size isn't currently supported!\n");
+            return 0;
+            /*result = LZ4_decompress_safe_doubleDict_unkown_size(source, dest, compressedSize, maxOutputSize,
+                                                    lz4sd->prefixSize, lz4sd->externalDict, lz4sd->extDictSize);*/
+        }
         if (result <= 0) return result;
         lz4sd->prefixSize += (size_t)uncompressedSize;
         lz4sd->prefixEnd  += uncompressedSize;
     } else {
+        printf("Force ext dict with unkown size isn't currently supported!\n");
+
         /* The buffer wraps around, or they're switching to another buffer. */
-        lz4sd->extDictSize = lz4sd->prefixSize;
+        /*lz4sd->extDictSize = lz4sd->prefixSize;
         lz4sd->externalDict = lz4sd->prefixEnd - lz4sd->extDictSize;
         result = LZ4_decompress_safe_forceExtDict_unkown_size(source, dest, compressedSize, maxOutputSize,
                                                   lz4sd->externalDict, lz4sd->extDictSize);
         if (result <= 0) return result;
         lz4sd->prefixSize = (size_t)uncompressedSize;
-        lz4sd->prefixEnd  = (BYTE*)dest + uncompressedSize;
+        lz4sd->prefixEnd  = (BYTE*)dest + uncompressedSize;*/
     }
 
     return result;
