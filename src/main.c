@@ -127,12 +127,23 @@ unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size
 		delta = b0[i] ^ b1[i];
 		if(delta == last_b) count++;
 		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
+			printf("Xor: %u Count: %u\n", delta, count);
+			
+			// write last run
 			if(count) {
 				// bounds check
 				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
 
 				enc[valid++] = count-1;
 				enc[valid++] = last_b;
+			}
+
+			// TODO rewrite this with a loop
+			if(i == ib_size-1 && delta != last_b) {
+				// bounds check
+				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
+				enc[valid++] = 0;
+				enc[valid++] = delta;
 			}
 			count = 1;
 			last_b = delta;
@@ -147,10 +158,38 @@ unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size
 	return valid + 1;
 }
 
+void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
+
+	// get # of seqs in delta
+	unsigned seqs = (unsigned) delta_enc[0];
+	unsigned i, j;
+
+	unsigned len, count = 0;
+	BYTE b;
+	for(i = 0; i < seqs; i += 2) {
+		len = delta_enc[i+1];
+		b = delta_enc[i+2];
+
+		for(j = 0; j <= len; j++, count++)
+			out[count] = orginal[count] ^ b;
+	}
+
+}
+
 int main() {
-	BYTE* joemma = malloc(100);
-	int i = delta("A bunch of happy emmas enj", "A bunch of happy teeas enj", 26, joemma, 100);
+	BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj";
+	BYTE* edit = "An entire flock  emmas enjoy flying all of those pineapples, but they don't enjoy being flownj";
+	BYTE* joemma = malloc(strlen(orgi));
+	int i = delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
 	printf("Ret: %d\n", i);
+
+	BYTE* out = malloc(strlen(orgi));
+	decode(orgi, joemma, out);
+	printf("Orgi:    %s  Size: %u\n", orgi, strlen(orgi));
+	printf("Decoded: %s  Size: %u\n", out, i);
+	printf("Edit:    %s\n", edit);
+
+	free(out);
 	free(joemma);
 	/*FILE* fp;
 	BYTE in[2048];
