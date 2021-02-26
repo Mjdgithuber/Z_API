@@ -117,6 +117,7 @@ void print_buf(BYTE* buf, int size) {
 void delta(BYTE* b0, BYTE* b1, int size) {
 	int i, j;
 	BYTE* br = malloc(size);
+	unsigned short* enc = malloc(size);
 
 
 	for(i = 0; i < size; i++)
@@ -127,21 +128,25 @@ void delta(BYTE* b0, BYTE* b1, int size) {
 	print_buf(br, size);
 
 	int valid = 0;
-	BYTE count = 0;
+	unsigned int count = 0;
 	BYTE last_b = 0;
 	BYTE delta;
 	for(i = 0; i < size; i++) {
 		delta = b0[i] ^ b1[i];
 		if(delta == last_b) count++;
 		else {
-			if(count) {
-				br[valid++] = count;
-				br[valid++] = last_b;
-			}
+			if(count) enc[valid++] = ((count << 8) + last_b);
+				//printf("%u %u\n", (count << 8) + last_b, enc[valid-1]);
+
+			//{
+				//br[valid++] = count;
+				//br[valid++] = last_b;
+			//}
 			count = 1;
 			last_b = delta;
-		}
+		}	
 	}
+	enc[valid++] = ((count << 8) + last_b);
 	/*	for(j = 0; j < 8; j++) {
 			int cur_b = (br[i] >> (7 - j)) & 1;
 			if(cur_b == last_b) {
@@ -153,12 +158,13 @@ void delta(BYTE* b0, BYTE* b1, int size) {
 			}
 		}
 	}*/
-	for(i = 0; i < valid; i += 2) {
-		printf("%d %d -> ", br[i], br[i+1]);
+	for(i = 0; i < valid; i++) {
+		printf("%d %d -> ", *((BYTE*)enc + 2*i + 1), *((BYTE*)enc + 2*i));
 	}
-	printf(" %d %d\n", count, last_b);
+	printf("\n");
 
 	free(br);
+	free(enc);
 }
 
 int main() {
