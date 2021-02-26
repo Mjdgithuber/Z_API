@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "lz4.h"
 
@@ -114,61 +115,43 @@ void print_buf(BYTE* buf, int size) {
 	printf("\n");
 }
 
-void delta(BYTE* b0, BYTE* b1, int size) {
-	int i, j;
-	BYTE* br = malloc(size);
-	unsigned short* enc = malloc(size);
-
-
-	for(i = 0; i < size; i++)
-		br[i] = b0[i] ^ b1[i];
-
-	print_buf(b0, size);
-	print_buf(b1, size);
-	print_buf(br, size);
+unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size) {
+	int i;
+	BYTE* enc = b_out+1; // +1 for size
 
 	int valid = 0;
 	unsigned int count = 0;
 	BYTE last_b = 0;
 	BYTE delta;
-	for(i = 0; i < size; i++) {
+	for(i = 0; i < ib_size; i++) {
 		delta = b0[i] ^ b1[i];
 		if(delta == last_b) count++;
-		else {
-			if(count) enc[valid++] = ((count << 8) + last_b);
-				//printf("%u %u\n", (count << 8) + last_b, enc[valid-1]);
+		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
+			if(count) {
+				// bounds check
+				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
 
-			//{
-				//br[valid++] = count;
-				//br[valid++] = last_b;
-			//}
+				enc[valid++] = count-1;
+				enc[valid++] = last_b;
+			}
 			count = 1;
 			last_b = delta;
-		}	
-	}
-	enc[valid++] = ((count << 8) + last_b);
-	/*	for(j = 0; j < 8; j++) {
-			int cur_b = (br[i] >> (7 - j)) & 1;
-			if(cur_b == last_b) {
-				cur_count++;
-			} else {
-				printf("%d %d -> ", cur_count, last_b);
-				cur_count = 1;
-				last_b = cur_b;
-			}
 		}
-	}*/
-	for(i = 0; i < valid; i++) {
-		printf("%d %d -> ", *((BYTE*)enc + 2*i + 1), *((BYTE*)enc + 2*i));
+	}
+
+	b_out[0] = valid;
+	for(i = 0; i < valid; i += 2) {
+		printf("%d %d -> ", enc[i], enc[i+1]);
 	}
 	printf("\n");
-
-	free(br);
-	free(enc);
+	return valid + 1;
 }
 
 int main() {
-	delta("A bunch of happy emmas enj", "A bunch of happy teeas enj", 26);
+	BYTE* joemma = malloc(100);
+	int i = delta("A bunch of happy emmas enj", "A bunch of happy teeas enj", 26, joemma, 100);
+	printf("Ret: %d\n", i);
+	free(joemma);
 	/*FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
