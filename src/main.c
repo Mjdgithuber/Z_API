@@ -127,8 +127,6 @@ unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size
 		delta = b0[i] ^ b1[i];
 		if(delta == last_b) count++;
 		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
-			printf("Xor: %u Count: %u\n", delta, count);
-			
 			// write last run
 			if(count) {
 				// bounds check
@@ -158,6 +156,101 @@ unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size
 	return valid + 1;
 }
 
+unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size, BYTE* tiny) {
+	int i;
+	BYTE* enc = b_out+1; // +1 for size
+
+	int valid = 0;
+	unsigned int count = 0;
+	BYTE last_b = 0;
+	BYTE delta;
+	for(i = 0; i < ib_size; i++) {
+		delta = b0[i] ^ b1[i];
+		if(delta == last_b) count++;
+		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
+			// write last run
+			if(count) {
+				// bounds check
+				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
+
+				enc[valid++] = count-1;
+				enc[valid++] = last_b;
+			}
+
+			// TODO rewrite this with a loop
+			if(i == ib_size-1 && delta != last_b) {
+				// bounds check
+				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
+				enc[valid++] = 0;
+				enc[valid++] = delta;
+			}
+			count = 1;
+			last_b = delta;
+		}
+	}
+
+	b_out[0] = valid;
+
+	int len;
+	BYTE b;
+	unsigned buf;
+	char cur_bit = 31;
+	count = 1;
+	for(i = 0; i < valid; i += 2) {
+		len = enc[i];
+		b = enc[i+1];
+		
+		// a single null byte
+		if(b == 0 && len == 0) {
+			// or with 0 same as doing nothing
+			cur_bit -= 2;
+		} else if(len == 0) { // non null byte with len of 1
+			buf |= ((0x01 << 8) + b) << (cur_bit - 9);
+			cur_bit -= 10;
+		} else if(len <= 0xf) { // non null bytes with len of 16 or less
+			buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
+			cur_bit -= 14;
+		} else { // non null bytes with len greater than 16
+			buf |= ((0x02 << 16) + (len << 8) + b) << (cur_bit - 17);
+			cur_bit -= 18;
+		}
+
+		// dump to output
+		while(cur_bit <= 23) {
+			// TODO add endian check
+			tiny[count++] = ((BYTE*)&buf)[3];
+			buf = buf << 8;
+			cur_bit += 8;
+		}
+	}
+	
+	// do final dump NOTE: at this point cur_bit is guarantee to be within 7 bits of 31 so no need for a while
+	if(cur_bit != 31) tiny[count++] = ((BYTE*)&buf)[3];
+
+	// set size in bytes
+	tiny[0] = count-1;
+
+	return valid + 1;
+}
+
+void decode_packed(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
+
+	// get # of seqs in delta
+	unsigned seqs = (unsigned) delta_enc[0];
+	unsigned i, j;
+
+	unsigned len, count = 0;
+	BYTE b;
+	for(i = 0; i < seqs; i += 2) {
+		len = delta_enc[i+1];
+		b = delta_enc[i+2];
+
+		for(j = 0; j <= len; j++, count++)
+			out[count] = orginal[count] ^ b;
+	}
+
+}
+
 void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
 
 	// get # of seqs in delta
@@ -180,8 +273,10 @@ int main() {
 	BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj";
 	BYTE* edit = "An entire flock  emmas enjoy flying all of those pineapples, but they don't enjoy being flownj";
 	BYTE* joemma = malloc(strlen(orgi));
-	int i = delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
-	printf("Ret: %d\n", i);
+	BYTE* packer = malloc(100);
+	//int i = delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
+	int i = delta_packed(orgi, edit, strlen(orgi), joemma, strlen(orgi), packer);
+	printf("Ret: %d\nPacked size in bytes %u\n", i, packer[0]);
 
 	BYTE* out = malloc(strlen(orgi));
 	decode(orgi, joemma, out);
@@ -191,6 +286,7 @@ int main() {
 
 	free(out);
 	free(joemma);
+	free(packer);
 	/*FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
