@@ -28,20 +28,24 @@ void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsign
 	LZ4_setCompressionLevel(lz4_s, LZ4HC_CLEVEL_MIN);
 #endif
 
+
 	BYTE *c_src = src;   /* current data source */
 	BYTE *c_dest = dest; /* current compressed destination */
 	for(i = 0; i < h->units; i++) {
+
 #ifndef HC_
 		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, h->unit_size, dest_size - (c_dest - dest), 1);
 #else
 		const int c_bytes = LZ4_compress_HC_continue(lz4_s, c_src, c_dest, h->unit_size, dest_size - (c_dest - dest));
 #endif
+
 		c_src += h->unit_size;
 		c_dest += c_bytes;
 		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, h->units, h->unit_size, c_bytes);
 	}
 
 	(*size) = c_dest - dest;
+
 #ifndef HC_
 	LZ4_freeStream(lz4_s);
 #else
@@ -49,14 +53,14 @@ void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsign
 #endif
 }
 
-void decompress_block(BYTE* src, BYTE* dest) {
+void decompress_block(BYTE* src, BYTE* dest, int units) {
 	unsigned i, result;
 
 	header* h = (header*) src;
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
 	BYTE *c_src = src + sizeof(header);
 	BYTE *c_dest = dest;
-	for(i = 0; i < h->units; i++) {
+	for(i = 0; i < ((units == -1) ? h->units : units); i++) {
 		//printf("Decompressing unit %u\n", i);
 		/*result = LZ4_decompress_safe_continue(lz4_sd, c_src, c_dest, 1000, h->unit_size);*/
 		result = LZ4_decompress_safe_continue_unkown_size (lz4_sd, c_src, c_dest, h->unit_size, 512);
@@ -69,6 +73,20 @@ void decompress_block(BYTE* src, BYTE* dest) {
 	LZ4_freeStreamDecode(lz4_sd);
 }
 
+/*void inplace_edit(BYTE* block, BYTE* edit, unsigned start_unit, unsigned end_unit) {
+	
+	header* h = (header*) src;
+	BYTE* decomp_buf = malloc(h->unit_size * h->units);
+
+	decompress_block(block, decomp_buf, -1);
+	
+	// replace bytes in decomp buffer
+	// load dict from [0, start_unit)
+	// recompress
+
+	free(decomp_buf);
+}*/
+
 void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest, unsigned dest_size, unsigned* size) {
 	
 	header* h = (header*) dest;
@@ -79,8 +97,73 @@ void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest,
 	(*size) += sizeof(header);
 }
 
+void bin(BYTE n) {
+	BYTE i;
+
+	for(i = 1 << (sizeof(BYTE)*8 - 1); i > 0; i = i / 2)
+		(n & i) ? printf("1") : printf("0");
+}
+
+void print_buf(BYTE* buf, int size) {
+	int i;
+	
+	for(i = 0; i < size; i++) {
+		bin(buf[i]);
+		printf(" ");
+	}
+	printf("\n");
+}
+
+void delta(BYTE* b0, BYTE* b1, int size) {
+	int i, j;
+	BYTE* br = malloc(size);
+
+
+	for(i = 0; i < size; i++)
+		br[i] = b0[i] ^ b1[i];
+
+	print_buf(b0, size);
+	print_buf(b1, size);
+	print_buf(br, size);
+
+	int valid = 0;
+	BYTE count = 0;
+	BYTE last_b = 0;
+	BYTE delta;
+	for(i = 0; i < size; i++) {
+		delta = b0[i] ^ b1[i];
+		if(delta == last_b) count++;
+		else {
+			if(count) {
+				br[valid++] = count;
+				br[valid++] = last_b;
+			}
+			count = 1;
+			last_b = delta;
+		}
+	}
+	/*	for(j = 0; j < 8; j++) {
+			int cur_b = (br[i] >> (7 - j)) & 1;
+			if(cur_b == last_b) {
+				cur_count++;
+			} else {
+				printf("%d %d -> ", cur_count, last_b);
+				cur_count = 1;
+				last_b = cur_b;
+			}
+		}
+	}*/
+	for(i = 0; i < valid; i += 2) {
+		printf("%d %d -> ", br[i], br[i+1]);
+	}
+	printf(" %d %d\n", count, last_b);
+
+	free(br);
+}
+
 int main() {
-	FILE* fp;
+	delta("A bunch of happy emmas enj", "A bunch of happy teeas enj", 26);
+	/*FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
 
@@ -105,9 +188,9 @@ int main() {
 	memset(in, 0, 256);
 	printf("'%s'\n", in);	
 
-	decompress_block(out, in);
+	decompress_block(out, in, -1);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
-	fclose(fp);
+	fclose(fp);*/
 	return 0;
 }
