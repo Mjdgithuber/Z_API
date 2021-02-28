@@ -149,10 +149,10 @@ unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size
 	}
 
 	b_out[0] = valid;
-	for(i = 0; i < valid; i += 2) {
+	/*for(i = 0; i < valid; i += 2) {
 		printf("%d %d -> ", enc[i], enc[i+1]);
 	}
-	printf("\n");
+	printf("\n");*/
 	return valid + 1;
 }
 
@@ -201,10 +201,10 @@ unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_outp
 		b = enc[i+1];
 		
 		// a single null byte
-		if(b == 0 && len == 0) {
+		if(b == 0 && len < 7) { // len 0 is 1 (because you can't have 0 length rep)
 			// or with 0 same as doing nothing
-			printf("Writing token 0\n");
-			cur_bit -= 2;
+			printf("Writing token 0 %u times\n", len);
+			cur_bit -= (len+1) * 2;
 		} else if(len == 0) { // non null byte with len of 1
 			printf("Writing token 1\n");
 			buf |= ((0x01 << 8) + b) << (cur_bit - 9);
@@ -238,7 +238,7 @@ unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_outp
 
 	// set size in bytes
 	tiny[0] = count-1;
-	printf("Packed Size: %u\n", tiny[0]);
+	//printf("Packed Size: %u\n", tiny[0]);
 
 	return valid + 1;
 }
@@ -270,13 +270,13 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 		bytes_in_buf++;
 		bytes_left--;
 	}
-	printf("\n\nStarting Buf %u\n", buf);
+	//printf("\n\nStarting Buf %u\n", buf);
 
 	int consumed_cache = 0;
 
 	while(out_count < orgi_size) {
 		token = buf >> 30;
-		printf("Count: %u, Token %u\n", out_count, token);
+		//printf("Count: %u, Token %u\n", out_count, token);
 		if(token == 0x00) {
 			out[out_count] = orginal[out_count];
 			out_count++;
@@ -305,13 +305,13 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 		buf = buf << consumed;
 		consumed_cache += consumed;
 		consumed = 0;
-		printf("Buf befor = %u\n", buf);
+		//printf("Buf befor = %u\n", buf);
 		while(consumed_cache >= 8 && bytes_left) {
 			buf |= (delta_enc[count++] << (consumed_cache-8));
 			consumed_cache -= 8;
 			bytes_left--;
 		}
-		printf("Buf after = %u\n", buf);
+		//printf("Buf after = %u\n", buf);
 	}
 }
 
@@ -334,10 +334,18 @@ void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
 }
 
 int main() {
-	BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj this is going to be erased but there is more";
-	BYTE* edit = "An entire flock  emmas enjoy flying all of those pineapples, but they don't enjoy being flownj                            but there is jell";
+	BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj this is going to be erased but there is more tl to 88";
+	BYTE* edit = "An entire flock  emmas enjoy flying all of those pineapples, but they don't enjoy being flownj                            but there is jell gx to 33";
 	BYTE* joemma = malloc(strlen(orgi));
 	BYTE* packer = malloc(500);
+
+	/*int total = 0;
+	int i;//000
+	for(i = 0; i < 10000000; i++) total += delta_packed(orgi, edit, strlen(orgi), joemma, strlen(orgi), packer);
+		//total += delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
+	printf("Total %d\n", total);
+	return 0;*/
+
 	//int i = delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
 	int i = delta_packed(orgi, edit, strlen(orgi), joemma, strlen(orgi), packer);
 	printf("Ret: %d\nPacked size in bytes %u\n", i, packer[0]);
