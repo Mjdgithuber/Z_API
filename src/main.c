@@ -74,6 +74,25 @@ void decompress_block(BYTE* src, BYTE* dest, int units) {
 	LZ4_freeStreamDecode(lz4_sd);
 }
 
+void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
+	header* h = (header*) block;
+	BYTE* tmp = malloc(h->unit_size * h->units);
+
+	// for now decompress the entire block
+	decompress_block(block, tmp, -1);
+
+	// overwrite data
+	memcpy(tmp + (h->unit_size * unit), src, h->unit_size);
+
+	// rebuild dict
+	LZ4_loadDict(make_stream_here, tmp, (h->unit_size * unit));
+
+	// recompress need to fix the function call with header
+	compress_block(tmp, new_block, dest_size, h, TODO_size ret);
+}
+
+compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size)
+
 /*void inplace_edit(BYTE* block, BYTE* edit, unsigned start_unit, unsigned end_unit) {
 	
 	header* h = (header*) src;
@@ -164,8 +183,13 @@ unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_outp
 	unsigned int count = 0;
 	BYTE last_b = 0;
 	BYTE delta;
+
+	int changed = 0;
 	for(i = 0; i < ib_size; i++) {
 		delta = b0[i] ^ b1[i];
+		
+		if(delta) changed++;
+	
 		if(delta == last_b) count++;
 		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
 			// write last run
@@ -188,6 +212,8 @@ unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_outp
 			last_b = delta;
 		}
 	}
+
+	printf("%u bytes changed!\n", changed);
 
 	b_out[0] = valid;
 
