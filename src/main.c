@@ -8,6 +8,9 @@
 
 #ifdef HC_
 #include "lz4hc.h"
+#define CSTREAM_T LZ4_streamHC_t
+#else
+#define CSTREAM_T LZ4_stream_t
 #endif
 
 
@@ -18,11 +21,11 @@ typedef struct {
 	short int units;     /* number of units */
 } header;
 
-void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, unsigned* size) {
+void compress_block(BYTE* src, BYTE* dest, unsigned offset, unsigned dest_size, CSTREAM_T* stream, unsigned* size) {
 	unsigned i;
 
 #ifndef HC_
-	LZ4_stream_t* const lz4_s = LZ4_createStream();
+	LZ4_stream_t* const lz4_s = stream ? stream : LZ4_createStream();
 #else
 	LZ4_streamHC_t lz4Stream_body = { 0 };
 	LZ4_streamHC_t* lz4_s = &lz4Stream_body;
@@ -31,9 +34,9 @@ void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, unsigned* size) {
 
 	header* h = (header*) dest;
 	dest_size -= sizeof(header);
-	BYTE *c_src = src;   /* current data source */
+	BYTE *c_src = src + (offset*h->unit_size);   /* current data source */
 	BYTE *c_dest = dest + sizeof(header); /* current compressed destination */
-	for(i = 0; i < h->units; i++) {
+	for(i = offset; i < h->units; i++) {
 
 #ifndef HC_
 		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, h->unit_size, dest_size - (c_dest - dest), 1);
@@ -75,7 +78,7 @@ void decompress_block(BYTE* src, BYTE* dest, int units) {
 	LZ4_freeStreamDecode(lz4_sd);
 }
 
-/*void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
+void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, int* size) {
 	header* h = (header*) block;
 	BYTE* tmp = malloc(h->unit_size * h->units);
 
@@ -85,12 +88,23 @@ void decompress_block(BYTE* src, BYTE* dest, int units) {
 	// overwrite data
 	memcpy(tmp + (h->unit_size * unit), src, h->unit_size);
 
+	//printf("\nUncomp  buffer: '%s'\n", in);
+	printf("\nAfter   memset: '%s'\n", tmp);
+
 	// rebuild dict
-	LZ4_loadDict(make_stream_here, tmp, (h->unit_size * unit));
+	LZ4_stream_t* lz4_s = NULL;
+	//LZ4_stream_t* lz4_s = LZ4_createStream();
+	//LZ4_loadDict(lz4_s, tmp, (h->unit_size * unit));
+
+	// build new_block
+	header* n_h = (header*) new_block;
+	n_h->unit_size = h->unit_size;
+	n_h->units = h->units;
 
 	// recompress need to fix the function call with header
-	compress_block(tmp, new_block, dest_size, h, TODO_size ret);
-}*/
+	// compress_block(tmp, new_block, 0, dest_size, lz4_s, size);
+	compress_block(tmp, new_block, unit, dest_size, lz4_s, size);
+}
 
 //compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size)
 
@@ -114,7 +128,8 @@ void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest,
 	h->unit_size = unit_size;
 	h->units = units;
 
-	compress_block(src, dest, dest_size, size);
+
+	compress_block(src, dest, 0, dest_size, NULL, size);
 }
 
 void bin(BYTE n) {
@@ -389,10 +404,20 @@ void test_delta() {
 
 }
 
+BYTE* gen_test_buf(char c, int size) {
+	BYTE* ret = malloc(size);
+
+	int i;
+	for(i = 0; i < size; i++)
+		ret[i] = c;
+	return ret;
+}
+
 int main() {
 	FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
+	BYTE out2[256*16];
 
 	fp = fopen("test_compress.txt", "r");
 	
@@ -416,6 +441,15 @@ int main() {
 	printf("'%s'\n", in);	
 
 	decompress_block(out, in, -1);
+	printf("\nUncomp  buffer: '%s'\n", in);
+
+
+	//update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, int* size)
+	BYTE* tmpx = gen_test_buf('A', 256);
+	update(tmpx, out, out2, 256*16, 1, &size);
+	free(tmpx);
+
+	decompress_block(out2, in, -1);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
 	fclose(fp);
