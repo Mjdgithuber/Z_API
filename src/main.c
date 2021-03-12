@@ -21,7 +21,7 @@ typedef struct {
 	short int units;     /* number of units */
 } header;
 
-void compress_block(BYTE* src, BYTE* dest, unsigned offset, unsigned dest_size, CSTREAM_T* stream, unsigned* size) {
+void compress_block(BYTE* src, BYTE* dest, header* h, unsigned offset, unsigned dest_size, CSTREAM_T* stream, unsigned* size) {
 	unsigned i;
 
 #ifndef HC_
@@ -32,10 +32,8 @@ void compress_block(BYTE* src, BYTE* dest, unsigned offset, unsigned dest_size, 
 	LZ4_setCompressionLevel(lz4_s, LZ4HC_CLEVEL_MIN);
 #endif
 
-	header* h = (header*) dest;
-	dest_size -= sizeof(header);
 	BYTE *c_src = src + (offset*h->unit_size);   /* current data source */
-	BYTE *c_dest = dest + sizeof(header); /* current compressed destination */
+	BYTE *c_dest = dest; /* current compressed destination */
 	for(i = offset; i < h->units; i++) {
 
 #ifndef HC_
@@ -58,7 +56,7 @@ void compress_block(BYTE* src, BYTE* dest, unsigned offset, unsigned dest_size, 
 #endif
 }
 
-void decompress_block(BYTE* src, BYTE* dest, int units) {
+int decompress_block(BYTE* src, BYTE* dest, int units) {
 	unsigned i, result;
 
 	header* h = (header*) src;
@@ -76,6 +74,8 @@ void decompress_block(BYTE* src, BYTE* dest, int units) {
 	}
 
 	LZ4_freeStreamDecode(lz4_sd);
+
+	return c_src - (src + sizeof(header));
 }
 
 void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, int* size) {
@@ -83,6 +83,7 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, in
 	BYTE* tmp = malloc(h->unit_size * h->units);
 
 	// for now decompress the entire block
+	int tmpx = decompress_block(block, tmp, unit);
 	decompress_block(block, tmp, -1);
 
 	// overwrite data
@@ -92,9 +93,9 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, in
 	printf("\nAfter   memset: '%s'\n", tmp);
 
 	// rebuild dict
-	LZ4_stream_t* lz4_s = NULL;
-	//LZ4_stream_t* lz4_s = LZ4_createStream();
-	//LZ4_loadDict(lz4_s, tmp, (h->unit_size * unit));
+	//LZ4_stream_t* lz4_s = NULL;
+	LZ4_stream_t* lz4_s = LZ4_createStream();
+	LZ4_loadDict(lz4_s, tmp, (h->unit_size * unit));
 
 	// build new_block
 	header* n_h = (header*) new_block;
@@ -103,7 +104,8 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, in
 
 	// recompress need to fix the function call with header
 	// compress_block(tmp, new_block, 0, dest_size, lz4_s, size);
-	compress_block(tmp, new_block, unit, dest_size, lz4_s, size);
+	compress_block(tmp,  new_block + tmpx + sizeof(header), n_h, unit, dest_size, lz4_s, size);
+	memcpy(new_block + sizeof(header), block + sizeof(header), tmpx);
 }
 
 //compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size)
@@ -129,7 +131,7 @@ void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest,
 	h->units = units;
 
 
-	compress_block(src, dest, 0, dest_size, NULL, size);
+	compress_block(src, dest + sizeof(header), h, 0, dest_size, NULL, size);
 }
 
 void bin(BYTE n) {
@@ -446,7 +448,8 @@ int main() {
 
 	//update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit, int* size)
 	BYTE* tmpx = gen_test_buf('A', 256);
-	update(tmpx, out, out2, 256*16, 1, &size);
+	//update(tmpx, out, out2, 256*16, 1, &size);
+	update(in+256, out, out2, 256*16, 1, &size);
 	free(tmpx);
 
 	decompress_block(out2, in, -1);
