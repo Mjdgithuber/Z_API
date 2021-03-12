@@ -18,7 +18,7 @@ typedef struct {
 	short int units;     /* number of units */
 } header;
 
-void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size) {
+void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, unsigned* size) {
 	unsigned i;
 
 #ifndef HC_
@@ -29,9 +29,10 @@ void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsign
 	LZ4_setCompressionLevel(lz4_s, LZ4HC_CLEVEL_MIN);
 #endif
 
-
+	header* h = (header*) dest;
+	dest_size -= sizeof(header);
 	BYTE *c_src = src;   /* current data source */
-	BYTE *c_dest = dest; /* current compressed destination */
+	BYTE *c_dest = dest + sizeof(header); /* current compressed destination */
 	for(i = 0; i < h->units; i++) {
 
 #ifndef HC_
@@ -74,7 +75,7 @@ void decompress_block(BYTE* src, BYTE* dest, int units) {
 	LZ4_freeStreamDecode(lz4_sd);
 }
 
-void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
+/*void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
 	header* h = (header*) block;
 	BYTE* tmp = malloc(h->unit_size * h->units);
 
@@ -89,9 +90,9 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
 
 	// recompress need to fix the function call with header
 	compress_block(tmp, new_block, dest_size, h, TODO_size ret);
-}
+}*/
 
-compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size)
+//compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size)
 
 /*void inplace_edit(BYTE* block, BYTE* edit, unsigned start_unit, unsigned end_unit) {
 	
@@ -108,13 +109,12 @@ compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* s
 }*/
 
 void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest, unsigned dest_size, unsigned* size) {
-	
+	// setup header
 	header* h = (header*) dest;
 	h->unit_size = unit_size;
 	h->units = units;
 
-	compress_block(src, dest + sizeof(header), dest_size - sizeof(header), h, size);
-	(*size) += sizeof(header);
+	compress_block(src, dest, dest_size, size);
 }
 
 void bin(BYTE n) {
@@ -359,7 +359,7 @@ void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
 
 }
 
-int main() {
+void test_delta() {
 	BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj this is going to be erased but there is more tl to 88";
 	BYTE* edit = "An entire flock  emmas enjoy flying all of those pineapples, but they don't enjoy being flownj                            but there is jell gx to 33";
 	BYTE* joemma = malloc(strlen(orgi));
@@ -386,7 +386,11 @@ int main() {
 	free(out);
 	free(joemma);
 	free(packer);
-	/*FILE* fp;
+
+}
+
+int main() {
+	FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
 
@@ -414,6 +418,6 @@ int main() {
 	decompress_block(out, in, -1);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
-	fclose(fp);*/
+	fclose(fp);
 	return 0;
 }
