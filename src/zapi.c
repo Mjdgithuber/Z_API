@@ -7,27 +7,9 @@
 #include "lz4.h"
 #include "zapi.h"
 
-void decompress_block(BYTE* src, BYTE* dest, int units) {
-	unsigned i, result;
 
-	header* h = (header*) src;
-	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	BYTE *c_src = src + sizeof(header);
-	BYTE *c_dest = dest;
-	for(i = 0; i < ((units == -1) ? h->units : units); i++) {
-		//printf("Decompressing unit %u\n", i);
-		/*result = LZ4_decompress_safe_continue(lz4_sd, c_src, c_dest, 1000, h->unit_size);*/
-		result = LZ4_decompress_safe_continue_unkown_size (lz4_sd, c_src, c_dest, h->unit_size, 512);
-		c_src += result;
-		c_dest += h->unit_size;
-		printf("Decompressed unit %u with compressed size of result %u\n", i, result);
-		//break;
-	}
 
-	LZ4_freeStreamDecode(lz4_sd);
-}
-
-void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
+/*void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
 	header* h = (header*) block;
 	BYTE* tmp = malloc(h->unit_size * h->units);
 
@@ -42,7 +24,7 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
 
 	// recompress need to fix the function call with header
 	compress_block(tmp, new_block, dest_size, h, TODO_size ret);
-}
+}*/
 
 
 /*void inplace_edit(BYTE* block, BYTE* edit, unsigned start_unit, unsigned end_unit) {
@@ -59,82 +41,61 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
 	free(decomp_buf);
 }*/
 
-unsigned compress_page(BYTE* src, BYTE* dest, unsigned thres, header* h) {
+int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts) {
+	unsigned i, result;
+
+	header* h = (header*) src;
+	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
+	BYTE *c_src = src + sizeof(header);
+	BYTE *c_dest = dest;
+	for(i = 0; i < p_opts->blocks; i++) {
+		result = LZ4_decompress_safe_continue_unkown_size (lz4_sd, c_src, c_dest, p_opts->block_sz, 512);
+		c_src += result;
+		c_dest += p_opts->block_sz;
+		printf("Decompressed unit %u with compressed size of result %u\n", i, result);
+	}
+
+	LZ4_freeStreamDecode(lz4_sd);
+	return 1;
+}
+
+unsigned compress_page(BYTE* src, BYTE* dest, unsigned thres, header* h, page_opts* p_opts) {
 	unsigned i;
 
 	LZ4_stream_t* const lz4_s = LZ4_createStream();
 
 	BYTE *c_src = src;   /* current data source */
 	BYTE *c_dest = dest; /* current compressed destination */
-	for(i = 0; i < h->units; i++) {
-		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, h->block_sz, dest_size - (c_dest - dest), 1);
+	for(i = 0; i < p_opts->blocks; i++) {
+		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, p_opts->block_sz, thres - (c_dest - dest), 1);
 
 		// can't compress into thres size
 		if(c_bytes == 0) return 0;
 
-		c_src += h->unit_size;
+		c_src += p_opts->block_sz;
 		c_dest += c_bytes;
-		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, h->units, h->unit_size, c_bytes);
+		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes);
 	}
-
-	(*size) = c_dest - dest;
-
 	LZ4_freeStream(lz4_s);
+	printf("Size emma: %d %d\n", (c_dest - dest), sizeof(header));
+	return (h->t_size += (c_dest - dest));
 }
 
 unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres) {
 	unsigned size;
 
 	// thres check
-	if(thres < sizeof(header)) return 0;
+	if(thres < (sizeof(header) + 1)) return 0;
 
 	// fill in header
 	header* h = (header*) dest;
-	h->block_sz = block_sz;
-	h->blocks = blocks;
+	h->t_size = sizeof(header);
 	h->delta_head = NULL;
 
-	return (size = );
+	return compress_page(src, dest + sizeof(header), thres - sizeof(header), h, p_opts);
 }
 
-void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest, unsigned dest_size, unsigned* size) {
-	
-	header* h = (header*) dest;
-	h->unit_size = unit_size;
-	h->units = units;
-
-	compress_block(src, dest + sizeof(header), dest_size - sizeof(header), h, size);
-	(*size) += sizeof(header);
-}
-
-void generate_block(BYTE* src, short int unit_size, short int units, BYTE* dest, unsigned dest_size, unsigned* size) {
-	
-	header* h = (header*) dest;
-	h->unit_size = unit_size;
-	h->units = units;
-
-	compress_block(src, dest + sizeof(header), dest_size - sizeof(header), h, size);
-	(*size) += sizeof(header);
-}
-
-void bin(BYTE n) {
-	BYTE i;
-
-	for(i = 1 << (sizeof(BYTE)*8 - 1); i > 0; i = i / 2)
-		(n & i) ? printf("1") : printf("0");
-}
-
-void print_buf(BYTE* buf, int size) {
-	int i;
-	
-	for(i = 0; i < size; i++) {
-		bin(buf[i]);
-		printf(" ");
-	}
-	printf("\n");
-}
-
-unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size) {
+/*unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size) {
 	int i;
 	BYTE* enc = b_out+1; // +1 for size
 
@@ -168,14 +129,10 @@ unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size
 	}
 
 	b_out[0] = valid;
-	/*for(i = 0; i < valid; i += 2) {
-		printf("%d %d -> ", enc[i], enc[i+1]);
-	}
-	printf("\n");*/
 	return valid + 1;
-}
+}*/
 
-unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size, BYTE* tiny) {
+/*unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size, BYTE* tiny) {
 	int i;
 	BYTE* enc = b_out+1; // +1 for size
 
@@ -267,9 +224,9 @@ unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_outp
 	//printf("Packed Size: %u\n", tiny[0]);
 
 	return valid + 1;
-}
+}*/
 
-void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
+/*void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 
 	// get # of seqs in delta
 	unsigned seqs = (unsigned) delta_enc[0];
@@ -339,9 +296,9 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 		}
 		//printf("Buf after = %u\n", buf);
 	}
-}
+}*/
 
-void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
+/*void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
 
 	// get # of seqs in delta
 	unsigned seqs = (unsigned) delta_enc[0];
@@ -357,20 +314,13 @@ void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
 			out[count] = orginal[count] ^ b;
 	}
 
-}
+}*/
 
 int main() {
-	BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj this is going to be erased but there is more tl to 88";
+	/*BYTE* orgi = "A bunch of happy emmas enjoy eating all of those pineapples, but they don't enjoy being eatenj this is going to be erased but there is more tl to 88";
 	BYTE* edit = "An entire flock  emmas enjoy flying all of those pineapples, but they don't enjoy being flownj                            but there is jell gx to 33";
 	BYTE* joemma = malloc(strlen(orgi));
 	BYTE* packer = malloc(500);
-
-	/*int total = 0;
-	int i;//000
-	for(i = 0; i < 10000000; i++) total += delta_packed(orgi, edit, strlen(orgi), joemma, strlen(orgi), packer);
-		//total += delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
-	printf("Total %d\n", total);
-	return 0;*/
 
 	//int i = delta(orgi, edit, strlen(orgi), joemma, strlen(orgi));
 	int i = delta_packed(orgi, edit, strlen(orgi), joemma, strlen(orgi), packer);
@@ -385,10 +335,14 @@ int main() {
 
 	free(out);
 	free(joemma);
-	free(packer);
-	/*FILE* fp;
+	free(packer);*/
+	FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
+
+	page_opts p_opts;
+	p_opts.block_sz = 256;
+	p_opts.blocks = 8;
 
 	fp = fopen("test_compress.txt", "r");
 	
@@ -396,14 +350,14 @@ int main() {
 	printf("Read %d chars from input!\n", num);
 	
 	int size;
-	generate_block(in, 256, 8, out, 256*16, &size);
+	size = generate_page(in, out, &p_opts, 256*16);
 
 	printf("Output compressed size %d!\n", size);
 
-	printf("\nTesting output block:\n");
+	/*printf("\nTesting output block:\n");
 	printf(" > Header:\n");
 	printf("   > Unit Size: %u\n", ((header*)out)->unit_size);
-	printf("   > Units    : %u\n", ((header*)out)->units);
+	printf("   > Units    : %u\n", ((header*)out)->units);*/
 
 	printf("\nOrginal buffer: '%s'\n", in);
 	
@@ -411,9 +365,9 @@ int main() {
 	memset(in, 0, 256);
 	printf("'%s'\n", in);	
 
-	decompress_block(out, in, -1);
+	decompress_page(out, in, &p_opts);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
-	fclose(fp);*/
+	fclose(fp);
 	return 0;
 }

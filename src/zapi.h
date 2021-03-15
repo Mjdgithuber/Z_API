@@ -26,8 +26,9 @@ unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres)
 
 /*
  * Decompress page 'src' into 'dest'
+ * 'dest' must be at least p_opts->block_sz * blocks in size
  * @return status { 0 -> failed, 1 -> success }
  */
-int decompress_page(BYTE* src, BYTE* dest);
+int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts);
 
 #endif
