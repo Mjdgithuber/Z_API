@@ -1,29 +1,14 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <limits.h>
-
-#include "lz4.h"
-
-#ifdef HC_
-#include "lz4hc.h"
-#endif
-
+#ifndef __ZAPI__H__
+#define __ZAPI__H__
 
 typedef unsigned char BYTE;
 
 typedef struct {
-	short int unit_size; /* in bytes */
-	short int units;     /* number of units */
+	short int block_sz; /* in bytes */
+	short int blocks;   /* number of blocks */
+	BYTE* delta_head;   /* head of delta linked list */
 } header;
 
-void compress_block(BYTE* src, BYTE* dest, unsigned dest_size, header* h, unsigned* size);
-
-void decompress_block(BYTE* src, BYTE* dest, int units);
-
-
-void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit);
 
 /*
  * Compresses 'src' buffer based on 'block_size' and 'blocks' and store in 'dest'
@@ -34,3 +19,11 @@ void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit);
  * 	into 'thres' bytes
  */
 unsigned generate_page(BYTE* src, short int block_size, short int blocks, BYTE* dest, unsigned thres);
+
+/*
+ * Decompress page 'src' into 'dest'
+ * @return status { 0 -> failed, 1 -> success }
+ */
+int decompress_page(BYTE* src, BYTE* dest);
+
+#endif
