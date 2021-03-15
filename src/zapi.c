@@ -41,6 +41,32 @@
 	free(decomp_buf);
 }*/
 
+
+typedef struct {
+        BYTE* next;
+        short int id;
+} delta_block;
+unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
+	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
+	
+	// decompress entire page (TODO do partial)
+	decompress_page(page, scratch, p_opts);
+
+	header* h = (header*) page;
+	delta_block** cur_delta = &((delta_block*)h->delta_head);
+	delta_block*  next_delta = (*cur_delta)->next;
+	while(next_delta) {
+		if(next_delta->id == unit) break;
+
+		(*cur_delta) = &next_delta;// not going to work
+		next_delta = next_delta->next;
+	}
+
+	// generate new delta block
+	
+	// append or edit linked chain
+}
+
 int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts) {
 	unsigned i, result;
 

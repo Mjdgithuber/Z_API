@@ -4,6 +4,11 @@
 typedef unsigned char BYTE;
 
 typedef struct {
+	BYTE* next;
+	short int size;
+} delta_block;
+
+typedef struct {
 	short int t_size; /* total size of compressed page + deltas in bytes */
 	BYTE* delta_head; /* head of delta linked list */
 } header;
@@ -30,5 +35,7 @@ unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres)
  * @return status { 0 -> failed, 1 -> success }
  */
 int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts);
+
+unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts);
 
 #endif
