@@ -4,11 +4,15 @@
 typedef unsigned char BYTE;
 
 typedef struct {
-	short int block_sz; /* in bytes */
-	short int blocks;   /* number of blocks */
-	BYTE* delta_head;   /* head of delta linked list */
+	short int t_size; /* total size of compressed page + deltas in bytes */
+	BYTE* delta_head; /* head of delta linked list */
 } header;
 
+typedef struct {
+	short int block_sz; /* in bytes */
+	short int blocks;   /* number of blocks */
+	
+} page_opts;
 
 /*
  * Compresses 'src' buffer based on 'block_size' and 'blocks' and store in 'dest'
@@ -18,7 +22,7 @@ typedef struct {
  * @return # of bytes written to 'dest', returns 0 if compression failed to compress
  * 	into 'thres' bytes
  */
-unsigned generate_page(BYTE* src, short int block_size, short int blocks, BYTE* dest, unsigned thres);
+unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres);
 
 /*
  * Decompress page 'src' into 'dest'
