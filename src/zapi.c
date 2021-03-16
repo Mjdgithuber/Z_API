@@ -42,14 +42,52 @@
 }*/
 
 
-typedef struct {
-        BYTE* next;
-        short int id;
-} delta_block;
+int page_size(BYTE* page) {
+	return ((header*) page)->t_size;
+}
+
+void free_page(BYTE* page) {
+	delta_block* db = (delta_block*)((header*) page)->delta_head;
+	delta_block* tmp;
+
+	// free delta linked list
+	while(db) {
+		tmp = db->next;
+		free(db);
+		db = tmp;
+	}
+
+	free(page);
+}
+
+static unsigned compression_max_size(page_opts* p_opts) {
+	return LZ4_COMPRESSBOUND(p_opts->block_sz) * p_opts->blocks;
+}
+
+unsigned minimum_scratch_size(page_opts* p_opts) {
+	return compression_max_size(p_opts) +         // for recompression
+		(p_opts->block_sz * p_opts->blocks);  // for decompression
+}
+
+
 unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
 	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	
-	// decompress entire page (TODO do partial)
+	// decompress entire page (TODO do partial and delta check)
+	unsigned offset = compression_max_size(p_opts);
+	decompress_page(page, scratch + offset, p_opts);
+
+	// for now just overwrite data and recompress (no delta yet)
+	memcpy(scratch + offset + (p_opts->block_sz * unit), src, p_opts->block_sz);
+	
+	// TODO must replace offset with something else
+	return generate_page(scratch + offset, scratch, p_opts, offset);
+}
+
+/*unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
+	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
+	
+	// decompress entire page (TODO do partial and delta check)
 	decompress_page(page, scratch, p_opts);
 
 	header* h = (header*) page;
@@ -65,7 +103,7 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	// generate new delta block
 	
 	// append or edit linked chain
-}
+}*/
 
 int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts) {
 	unsigned i, result;

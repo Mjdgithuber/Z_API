@@ -3,9 +3,11 @@
 
 typedef unsigned char BYTE;
 
-typedef struct {
-	BYTE* next;
-	short int size;
+struct delta;
+
+typedef struct delta {
+	struct delta* next;
+	short int id;
 } delta_block;
 
 typedef struct {
@@ -36,6 +38,32 @@ unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres)
  */
 int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts);
 
-unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts);
+
+/* @return the total size of the page including metadata */
+int page_size(BYTE* page);
+
+/* frees page and associated delta blocks */
+void free_page(BYTE* page);
+
+
+/* @return the minimum size of scratch buffer needed to be send to update_block */
+unsigned minimum_scratch_size(page_opts* p_opts);
+
+
+/* Updates one block in a page, this function will do one of the following operations
+ * 1) perform a delta encoding of the changed data, this will change the total size of
+ *    the page but will append to an internal linked list so no data from page buffer
+ *    will move.  0 will be returned if this occured
+ * 2) if delta encoding doesn't meet the threshold, this function will return a new 
+ *    compressed page with the new block contained within it.  This new page will be 
+ *    contained in the scratch buffer.  This will return the size of the new compressed
+ *    page stored in the scratch buffer
+ *
+ * 'src' the new block with location 'unit' to be written to 'page' 
+ * 'scratch' a scratch buffer to be allocated by caller for an internal working space
+ *           also to be used to return a new compressed page when needed
+ *           NOTE: scratch buffer must be at least as large as minimum_scratch_size() 
+ */
+unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch);
 
 #endif
