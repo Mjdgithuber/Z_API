@@ -21,7 +21,7 @@ int main() {
 	int num = fread(in, 1, 2048, fp);
 	printf("Read %d chars from input!\n", num);
 	
-	int size;
+	int size, delta_failed;
 	size = generate_page(in, out, &p_opts, 256*16);
 
 	printf("Output compressed size %d!\n", size);
@@ -32,7 +32,7 @@ int main() {
 	memset(in, 0, 256*8);
 	printf("'%s'\n", in);	
 
-	decompress_page(out, in, &p_opts);
+	decompress_page(out, in, &p_opts, p_opts.blocks);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
 	printf("\n\n\nTesting update:\n");
@@ -56,14 +56,16 @@ int main() {
 	printf("\nCleared buffer: '%s'\n", in);
 
 	// do update
-	size = update_block(some_data, out, 4, &p_opts, scratch);
+	delta_failed = update_block(some_data, out, 4, &p_opts, scratch);
 
 	// check if new page was generated
-	if(size)
-		memcpy(out, scratch, size); // copy into some other buffer
+	if(delta_failed) {
+		size = generate_page(scratch, out, &p_opts, 256*16);
+		//memcpy(out, scratch, size); // copy into some other buffer
+	}
 
 	// now decompress and check to see if data looks good
-	decompress_page(out, in, &p_opts);
+	decompress_page(out, in, &p_opts, p_opts.blocks);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
 	free(scratch);

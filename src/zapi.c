@@ -70,7 +70,7 @@ unsigned minimum_scratch_size(page_opts* p_opts) {
 }
 
 
-unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
+/*unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
 	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	
 	// decompress entire page (TODO do partial and delta check)
@@ -82,15 +82,48 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	
 	// TODO must replace offset with something else
 	return generate_page(scratch + offset, scratch, p_opts, offset);
+} */
+
+static int decompress_page_internal(BYTE* src, BYTE* dest, page_opts* p_opts, 
+	LZ4_streamDecode_t* stream, unsigned blocks) {
+
+	unsigned i, tmp, c_read = 0;
+	for(i = 0; i < blocks; i++) {
+		tmp = LZ4_decompress_safe_continue_unkown_size (stream, src + c_read, dest, p_opts->block_sz, 512);
+		c_read += tmp;
+		dest += p_opts->block_sz;
+		
+	}
+	
+	// TODO return -1 if fail
+	return c_read;
 }
 
-/*unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
+unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
 	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	
 	// decompress entire page (TODO do partial and delta check)
-	decompress_page(page, scratch, p_opts);
-
 	header* h = (header*) page;
+
+	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
+	int src_read = decompress_page_internal(page + sizeof(header), scratch, p_opts, lz4_sd, unit + 1);
+
+	// generate delta block
+	if(1) {// decompres rest of page
+		// overwrite data
+		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
+		decompress_page_internal(page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, p_opts->blocks - (unit+1));
+	} else {
+
+	}
+
+	LZ4_freeStreamDecode(lz4_sd);
+
+	return 1; // indicate delta failed
+
+	//decompress_page(page, scratch, p_opts);
+
+	/*header* h = (header*) page;
 	delta_block** cur_delta = &((delta_block*)h->delta_head);
 	delta_block*  next_delta = (*cur_delta)->next;
 	while(next_delta) {
@@ -98,26 +131,28 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 
 		(*cur_delta) = &next_delta;// not going to work
 		next_delta = next_delta->next;
-	}
+	}*/
 
 	// generate new delta block
 	
 	// append or edit linked chain
-}*/
+}
 
-int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts) {
+int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {
 	unsigned i, result;
 
 	header* h = (header*) src;
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	BYTE *c_src = src + sizeof(header);
+	
+	decompress_page_internal(src + sizeof(header), dest, p_opts, lz4_sd, blocks);
+	/*BYTE *c_src = src + sizeof(header);
 	BYTE *c_dest = dest;
 	for(i = 0; i < p_opts->blocks; i++) {
 		result = LZ4_decompress_safe_continue_unkown_size (lz4_sd, c_src, c_dest, p_opts->block_sz, 512);
 		c_src += result;
 		c_dest += p_opts->block_sz;
 		printf("Decompressed unit %u with compressed size of result %u\n", i, result);
-	}
+	}*/
 
 	LZ4_freeStreamDecode(lz4_sd);
 	return 1;
