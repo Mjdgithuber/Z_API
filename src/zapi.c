@@ -99,6 +99,91 @@ static int decompress_page_internal(BYTE* src, BYTE* dest, page_opts* p_opts,
 	return c_read;
 }
 
+static BYTE pack_delta(unsigned length, BYTE delta, unsigned* buf, char* cur_bit, unsigned* bytes_used, BYTE* out, int max_output) {
+	// a single null byte
+	if(delta == 0 && length < 7) { // length 0 is 1 (because you can't have 0 length rep)
+		// or with 0 same as doing nothing
+		printf("Writing token 0 %u times\n", length);
+		(*cur_bit) -= (length+1) * 2;
+	} else if(length == 0) { // non null byte with length of 1
+		printf("Writing token 1\n");
+		(*buf) |= ((0x01 << 8) + delta) << (*cur_bit - 9);
+		(*cur_bit) -= 10;
+	} else if(length <= 0xf) { // non null bytes with length of 16 or less
+		printf("Writing token 2 with length %u\n", length);
+		(*buf) |= ((0x02 << 12) + (length << 8) + delta) << (*cur_bit - 13);
+		(*cur_bit) -= 14;
+	} else { // non null bytes with length greater than 16
+		printf("Writing token 3\n");
+		(*buf) |= ((0x03 << 16) + (length << 8) + delta) << (*cur_bit - 17);
+		(*cur_bit) -= 18;
+	}
+	// dump to output
+	while((*cur_bit) <= 23) {
+		if((*bytes_used) >= max_output)
+			return 0;
+
+		// TODO add endian check
+		out[(*bytes_used)++] = ((BYTE*)buf)[3]; //TODO why is this a char MATTHEW?
+		(*buf) = (*buf) << 8;
+		(*cur_bit) += 8;
+	}
+
+	return 1;
+}
+
+static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size) {
+
+	unsigned buf = 0;
+	char cur_bit = 31;
+	unsigned bytes_used = 0;
+	char success;
+
+	int i;
+	unsigned int count = 0;
+	BYTE last_d = 0;
+	BYTE delta;
+	int changed = 0;
+	for(i = 0; i < ib_size; i++) {
+		delta = b0[i] ^ b1[i];
+		
+		if(delta) changed++;
+	
+		if(delta == last_d) count++;
+		if(delta != last_d || i == ib_size-1 || count == (UCHAR_MAX+1)) {
+
+			// new 
+			if(count)
+				success = pack_delta(count-1, last_d, &buf, &cur_bit, &bytes_used, b_out+1, max_output_size-1);
+			if(i == ib_size-1 && delta != last_d)
+				success = pack_delta(0, delta, &buf, &cur_bit, &bytes_used, b_out+1, max_output_size-1);
+
+			if(!success) return 0;
+
+			// end of new
+			//////
+
+			count = 1;
+			last_d = delta;
+		}
+	}
+
+	printf("%u bytes changed!\n", changed);
+
+	// do final dump NOTE: at this point cur_bit is guarantee to be within 7 bits of 31 so no need for a while also encode end if needed with 0x03
+	if(cur_bit != 31) {
+		if(bytes_used+2 > max_output_size) return 0;
+
+		// cur bit must be between 25-29
+		buf |= 0x03 << (cur_bit-25); // signal end
+		b_out[(bytes_used++) + 1] = ((BYTE*)&buf)[3]; // +1 as [0] is reserved for size
+	}
+
+	// set size in bytes
+	b_out[0] = bytes_used;
+	return bytes_used + 1;
+}
+
 unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
 	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	
@@ -109,12 +194,15 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	int src_read = decompress_page_internal(page + sizeof(header), scratch, p_opts, lz4_sd, unit + 1);
 
 	// generate delta block
-	if(1) {// decompres rest of page
+	int s_offset = p_opts->block_sz * unit;
+	int d_size = delta_packed(src, scratch + s_offset, p_opts->block_sz, scratch + p_opts->block_sz * p_opts->blocks, 100); //TODO ask about what the threshold should be
+
+	if(!d_size) { // delta compression failed
 		// overwrite data
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
 		decompress_page_internal(page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, p_opts->blocks - (unit+1));
 	} else {
-
+		
 	}
 
 	LZ4_freeStreamDecode(lz4_sd);
