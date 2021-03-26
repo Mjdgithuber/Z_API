@@ -92,7 +92,6 @@ static int decompress_page_internal(BYTE* src, BYTE* dest, page_opts* p_opts,
 		tmp = LZ4_decompress_safe_continue_unkown_size (stream, src + c_read, dest, p_opts->block_sz, 512);
 		c_read += tmp;
 		dest += p_opts->block_sz;
-		
 	}
 	
 	// TODO return -1 if fail
@@ -114,7 +113,7 @@ static BYTE pack_delta(unsigned length, BYTE delta, unsigned* buf, char* cur_bit
 		(*buf) |= ((0x02 << 12) + (length << 8) + delta) << (*cur_bit - 13);
 		(*cur_bit) -= 14;
 	} else { // non null bytes with length greater than 16
-		printf("Writing token 3\n");
+		printf("Writing token 3 with length %u\n", length);
 		(*buf) |= ((0x03 << 16) + (length << 8) + delta) << (*cur_bit - 17);
 		(*cur_bit) -= 18;
 	}
@@ -137,7 +136,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 	unsigned buf = 0;
 	char cur_bit = 31;
 	unsigned bytes_used = 0;
-	char success;
+	char success = 1;
 
 	int i;
 	unsigned int count = 0;
@@ -145,6 +144,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 	BYTE delta;
 	int changed = 0;
 	for(i = 0; i < ib_size; i++) {
+		//printf("Here: %d\n", max_output_size);
 		delta = b0[i] ^ b1[i];
 		
 		if(delta) changed++;
@@ -184,6 +184,25 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 	return bytes_used + 1;
 }
 
+static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, unsigned id) {
+	delta_block* db = malloc(sizeof(delta_block));
+
+	// load delta block
+	BYTE* data = malloc(size);
+	memcpy(data, src, size);
+	db->data = data;
+	db->id = id;
+
+	// update/append to list
+	delta_block** next = head;
+	while(*next && (*next)->id != id)
+		next = &((*next)->next);
+
+	db->next = (*next) ? (*next)->next : NULL;
+	free(*next);
+	(*next) = db;
+}
+
 unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
 	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	
@@ -197,33 +216,21 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	int s_offset = p_opts->block_sz * unit;
 	int d_size = delta_packed(src, scratch + s_offset, p_opts->block_sz, scratch + p_opts->block_sz * p_opts->blocks, 100); //TODO ask about what the threshold should be
 
+	printf("Delta size: %d\n", d_size);
+
 	if(!d_size) { // delta compression failed
 		// overwrite data
+		printf("Delta failed!\n");
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
 		decompress_page_internal(page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, p_opts->blocks - (unit+1));
-	} else {
-		
+	} else { // delta compression succeeded
+		printf("Delta succeeded!\n");
+		update_delta_llist(&(h->delta_head), scratch + p_opts->block_sz * p_opts->blocks, d_size, unit);
 	}
 
 	LZ4_freeStreamDecode(lz4_sd);
 
-	return 1; // indicate delta failed
-
-	//decompress_page(page, scratch, p_opts);
-
-	/*header* h = (header*) page;
-	delta_block** cur_delta = &((delta_block*)h->delta_head);
-	delta_block*  next_delta = (*cur_delta)->next;
-	while(next_delta) {
-		if(next_delta->id == unit) break;
-
-		(*cur_delta) = &next_delta;// not going to work
-		next_delta = next_delta->next;
-	}*/
-
-	// generate new delta block
-	
-	// append or edit linked chain
+	return !d_size; // indicate delta failed
 }
 
 int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {

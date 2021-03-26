@@ -7,6 +7,7 @@ struct delta;
 
 typedef struct delta {
 	struct delta* next;
+	BYTE* data;
 	short int id;
 } delta_block;
 
