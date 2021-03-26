@@ -12,7 +12,7 @@ typedef struct delta {
 
 typedef struct {
 	short int t_size; /* total size of compressed page + deltas in bytes */
-	BYTE* delta_head; /* head of delta linked list */
+	delta_block* delta_head; /* head of delta linked list */
 } header;
 
 typedef struct {
