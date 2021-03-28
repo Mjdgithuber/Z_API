@@ -60,6 +60,7 @@ int main() {
 
 	// check if new page was generated
 	if(delta_failed) {
+		printf("Delta failed!\n");
 		size = generate_page(scratch, out, &p_opts, 256*16);
 		//memcpy(out, scratch, size); // copy into some other buffer
 	}

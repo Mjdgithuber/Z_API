@@ -84,14 +84,98 @@ unsigned minimum_scratch_size(page_opts* p_opts) {
 	return generate_page(scratch + offset, scratch, p_opts, offset);
 } */
 
-static int decompress_page_internal(BYTE* src, BYTE* dest, page_opts* p_opts, 
-	LZ4_streamDecode_t* stream, unsigned blocks) {
+void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 
+	// get # of seqs in delta
+	unsigned seqs = (unsigned) delta_enc[0];
+	unsigned i, j;
+
+	unsigned len;
+	BYTE b;
+
+	unsigned buf = 0;
+	char cur_bit = 31;
+	BYTE token;
+	unsigned count = 1;
+	
+	int bytes_left = (int) delta_enc[0];
+	BYTE bytes_in_buf = 0;
+
+	int out_count = 0;
+
+	int consumed = 0;
+	
+	// init load of buffer
+	while(bytes_in_buf != 4 && bytes_left) {
+		buf = (buf << 8) + delta_enc[count++];
+		bytes_in_buf++;
+		bytes_left--;
+	}
+	//printf("\n\nStarting Buf %u\n", buf);
+
+	int consumed_cache = 0;
+
+	while(out_count < orgi_size) {
+		token = buf >> 30;
+		//printf("Count: %u, Token %u\n", out_count, token);
+		if(token == 0x00) {
+			out[out_count] = orginal[out_count];
+			out_count++;
+			consumed += 2;
+		} else if(token == 0x01) { //buf |= ((0x01 << 8) + b) << (cur_bit - 9);
+			b = (buf >> 22) & 0xff;
+			out[out_count] = orginal[out_count] ^ b;
+			out_count++;
+			consumed += 10;
+		} else if(token == 0x02) {// buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
+			len = (buf >> 26) & 0xf;
+			b = (buf >> 18) & 0xff;
+			for(j = 0; j <= len; j++, out_count++)
+				out[out_count] = orginal[out_count] ^ b;
+
+			consumed += 14;
+		} else if(token == 0x03 && consumed < 14) { // < 14 signals end if needed
+			len = (buf >> 22) & 0xff;
+			b = (buf >> 14) & 0xff;
+			for(j = 0; j <= len; j++, out_count++)
+				out[out_count] = orginal[out_count] ^ b;
+			consumed += 18;
+		} else return; // end mark hit return
+	
+	
+		buf = buf << consumed;
+		consumed_cache += consumed;
+		consumed = 0;
+		//printf("Buf befor = %u\n", buf);
+		while(consumed_cache >= 8 && bytes_left) {
+			buf |= (delta_enc[count++] << (consumed_cache-8));
+			consumed_cache -= 8;
+			bytes_left--;
+		}
+		//printf("Buf after = %u\n", buf);
+	}
+}
+
+static int decompress_page_internal(header* h, BYTE* src, BYTE* dest, page_opts* p_opts, 
+	LZ4_streamDecode_t* stream, unsigned start_index, unsigned blocks) {
+
+	BYTE* addr;
 	unsigned i, tmp, c_read = 0;
 	for(i = 0; i < blocks; i++) {
 		tmp = LZ4_decompress_safe_continue_unkown_size (stream, src + c_read, dest, p_opts->block_sz, 512);
 		c_read += tmp;
 		dest += p_opts->block_sz;
+	}
+
+	// decompress needed delta blocks
+	delta_block* dp = h->delta_head;
+	while(dp) {
+		tmp = dp->id - start_index;
+		if(tmp >= 0 && tmp < blocks) {
+			addr = dest + p_opts->block_sz * tmp;
+			decode_packed(addr, p_opts->block_sz, dp->data, addr);
+		}
+		dp = dp->next;
 	}
 	
 	// TODO return -1 if fail
@@ -144,7 +228,6 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 	BYTE delta;
 	int changed = 0;
 	for(i = 0; i < ib_size; i++) {
-		//printf("Here: %d\n", max_output_size);
 		delta = b0[i] ^ b1[i];
 		
 		if(delta) changed++;
@@ -210,7 +293,7 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	header* h = (header*) page;
 
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	int src_read = decompress_page_internal(page + sizeof(header), scratch, p_opts, lz4_sd, unit + 1);
+	int src_read = decompress_page_internal(h, page + sizeof(header), scratch, p_opts, lz4_sd, 0, unit + 1);
 
 	// generate delta block
 	int s_offset = p_opts->block_sz * unit;
@@ -222,7 +305,7 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 		// overwrite data
 		printf("Delta failed!\n");
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
-		decompress_page_internal(page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, p_opts->blocks - (unit+1));
+		decompress_page_internal(h, page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, unit+1, p_opts->blocks - (unit+1));
 	} else { // delta compression succeeded
 		printf("Delta succeeded!\n");
 		update_delta_llist(&(h->delta_head), scratch + p_opts->block_sz * p_opts->blocks, d_size, unit);
@@ -239,7 +322,7 @@ int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {
 	header* h = (header*) src;
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
 	
-	decompress_page_internal(src + sizeof(header), dest, p_opts, lz4_sd, blocks);
+	decompress_page_internal(h, src + sizeof(header), dest, p_opts, lz4_sd, 0, blocks);
 	/*BYTE *c_src = src + sizeof(header);
 	BYTE *c_dest = dest;
 	for(i = 0; i < p_opts->blocks; i++) {
@@ -420,77 +503,6 @@ unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres)
 	return valid + 1;
 }*/
 
-/*void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
-
-	// get # of seqs in delta
-	unsigned seqs = (unsigned) delta_enc[0];
-	unsigned i, j;
-
-	unsigned len;
-	BYTE b;
-
-	unsigned buf = 0;
-	char cur_bit = 31;
-	BYTE token;
-	unsigned count = 1;
-	
-	int bytes_left = (int) delta_enc[0];
-	BYTE bytes_in_buf = 0;
-
-	int out_count = 0;
-
-	int consumed = 0;
-	
-	// init load of buffer
-	while(bytes_in_buf != 4 && bytes_left) {
-		buf = (buf << 8) + delta_enc[count++];
-		bytes_in_buf++;
-		bytes_left--;
-	}
-	//printf("\n\nStarting Buf %u\n", buf);
-
-	int consumed_cache = 0;
-
-	while(out_count < orgi_size) {
-		token = buf >> 30;
-		//printf("Count: %u, Token %u\n", out_count, token);
-		if(token == 0x00) {
-			out[out_count] = orginal[out_count];
-			out_count++;
-			consumed += 2;
-		} else if(token == 0x01) { //buf |= ((0x01 << 8) + b) << (cur_bit - 9);
-			b = (buf >> 22) & 0xff;
-			out[out_count] = orginal[out_count] ^ b;
-			out_count++;
-			consumed += 10;
-		} else if(token == 0x02) {// buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
-			len = (buf >> 26) & 0xf;
-			b = (buf >> 18) & 0xff;
-			for(j = 0; j <= len; j++, out_count++)
-				out[out_count] = orginal[out_count] ^ b;
-
-			consumed += 14;
-		} else if(token == 0x03 && consumed < 14) { // < 14 signals end if needed
-			len = (buf >> 22) & 0xff;
-			b = (buf >> 14) & 0xff;
-			for(j = 0; j <= len; j++, out_count++)
-				out[out_count] = orginal[out_count] ^ b;
-			consumed += 18;
-		} else return; // end mark hit return
-	
-	
-		buf = buf << consumed;
-		consumed_cache += consumed;
-		consumed = 0;
-		//printf("Buf befor = %u\n", buf);
-		while(consumed_cache >= 8 && bytes_left) {
-			buf |= (delta_enc[count++] << (consumed_cache-8));
-			consumed_cache -= 8;
-			bytes_left--;
-		}
-		//printf("Buf after = %u\n", buf);
-	}
-}*/
 
 /*void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
 
