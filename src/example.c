@@ -66,6 +66,7 @@ int main() {
 	}
 
 	// now decompress and check to see if data looks good
+	printf("\n\nStarting final decompression!\n");
 	decompress_page(out, in, &p_opts, p_opts.blocks);
 	printf("\nUncomp  buffer: '%s'\n", in);
 
