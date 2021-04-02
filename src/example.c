@@ -7,8 +7,97 @@
 #include "lz4.h"
 #include "zapi.h"
 
-int main() {
+char read_file(const char* file, BYTE* buf, unsigned size) {
 	FILE* fp;
+	int read;
+
+	fp = fopen(file, "r");
+	read = fread(buf, 1, size, fp);
+	
+	fclose(fp);
+	if(read != size) {
+		printf("Only able to read %u/%u bytes from %s!\n", read, size, file);
+		return 0;
+	} else printf("Read %d bytes from '%s'\n", read, file);
+
+	return 1;
+}
+
+void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_page) {
+	BYTE* edit_block = malloc(p_opts->block_sz);
+
+	// copy org data and make some changes to block 4 (0 indexed)
+	printf("\nRunning delta tests:\n");
+	printf("Making edits to block 4\n");
+	memcpy(edit_block, test_data + 4*p_opts->block_sz, p_opts->block_sz);
+	edit_block[0] = 'E';
+	edit_block[1] = 'm';
+	edit_block[2] = 'm';
+	edit_block[3] = 'a';
+	edit_block[4] = '!';
+
+	BYTE* scratch = malloc(minimum_scratch_size(p_opts));
+	int delta_failed = update_block(edit_block, page, 4, p_opts, scratch);	
+
+	if(delta_failed) printf("Need to allocate a new page\n");
+
+	decompress_page(page, dump_page, p_opts, p_opts->blocks);
+	if(!memcmp(dump_page, test_data, p_opts->blocks * p_opts->block_sz))
+		printf("Decompression successfully matched original data\n");
+	else
+		printf("Decompression failed to match original data\n");	
+	
+	printf("\nUncomp  buffer: '%s'\n", dump_page);
+
+	free(scratch);
+	free(edit_block);
+}
+
+void test() {
+	BYTE* test_data;
+
+	page_opts p_opts;
+	p_opts.block_sz = 256;
+	p_opts.blocks = 8;
+
+	unsigned size = p_opts.block_sz * p_opts.blocks;
+	test_data = malloc(size);
+	if(!read_file("test_compress.txt", test_data, size))
+		return;
+
+	// generate test page
+	unsigned p_size;
+	BYTE* scratch = malloc(size * 2);
+	printf("\nCompression Test:\n");
+	p_size = generate_page(test_data, scratch, &p_opts, size * 2);
+
+	// copy into correct size buffer
+	BYTE* page = malloc(p_size);
+	memcpy(page, scratch, p_size);
+	printf("Generated page with compressed size of %u, REPORTED SIZE: %u\n", p_size, page_size(page));
+	printf("Compression ratio %.2f\n\n", (float)size/p_size);
+
+	printf("Decompression Test:\nDecompressing page...\n");
+	BYTE* decomp_page = malloc(size);
+	decompress_page(page, decomp_page, &p_opts, p_opts.blocks);
+	if(!memcmp(decomp_page, test_data, size))
+		printf("Decompression successfully matched original data\n");
+	else
+		printf("Decompression failed to match original data\n");
+	
+	run_delta_test(page, test_data, &p_opts, decomp_page);
+
+	free_page(page);
+	free(page);
+	free(test_data);
+	free(scratch);
+}
+
+int main() {
+	test();
+
+	return 0;
+/*	FILE* fp;
 	BYTE in[2048];
 	BYTE out[256*16];	
 
@@ -50,13 +139,22 @@ int main() {
 	some_data[2] = 'm';
 	some_data[3] = 'a';
 
-	// clear input to test if decompress works
-	memset(in, 0, 256*8);
-
 	printf("\nCleared buffer: '%s'\n", in);
 
 	// do update
 	delta_failed = update_block(some_data, out, 4, &p_opts, scratch);
+
+	memcpy(some_data, in + 7*256, 256);
+	some_data[100] = 'F';
+	some_data[101] = 'e';
+	some_data[102] = 'm';
+	some_data[103] = 'e';
+	some_data[254] = 'x';
+	some_data[255] = 'y';
+	delta_failed = update_block(some_data, out, 7, &p_opts, scratch);
+
+	// clear input to test if decompress works
+	memset(in, 0, 256*8);
 
 	// check if new page was generated
 	if(delta_failed) {
@@ -76,5 +174,5 @@ int main() {
 	// but it should be called to clear the linked list which doesn't
 	// exist yet
 	fclose(fp);
-	return 0;
+	return 0;*/
 }

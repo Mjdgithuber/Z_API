@@ -52,12 +52,11 @@ void free_page(BYTE* page) {
 
 	// free delta linked list
 	while(db) {
+		printf("Freeing delta block with id %u\n", db->id);
 		tmp = db->next;
 		free(db);
 		db = tmp;
 	}
-
-	free(page);
 }
 
 static unsigned compression_max_size(page_opts* p_opts) {
@@ -112,7 +111,7 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 			for(i = 0; i <= len; i++, o_c++)
 				out[o_c] = orginal[o_c] ^ b;
 			c_tmp = 14;
-		} else if(token == 0x03 && c_tmp < 14) { // < 14 signals end if needed
+		} else if(token == 0x03 && c_tmp < 14) { // < 14 signals end if needed  TODO c_tmp will always be 0 here?
 			len = (buf >> 22) & 0xff;
 			b = (buf >> 14) & 0xff;
 			for(i = 0; i <= len; i++, o_c++)
@@ -327,7 +326,6 @@ unsigned compress_page(BYTE* src, BYTE* dest, unsigned thres, header* h, page_op
 		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes);
 	}
 	LZ4_freeStream(lz4_s);
-	printf("Size emma: %d %d\n", (c_dest - dest), sizeof(header));
 	return (h->t_size += (c_dest - dest));
 }
 
