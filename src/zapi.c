@@ -98,32 +98,26 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 	unsigned count = 1;
 	
 	int bytes_left = (int) delta_enc[0];
-	BYTE bytes_in_buf = 0;
 
 	int out_count = 0;
 
 	int consumed = 0;
 	
-	// init load of buffer
-	while(bytes_in_buf != 4 && bytes_left) {
-		buf = (buf << 8) + delta_enc[count++];
-		bytes_in_buf++;
-		bytes_left--;
-	}
-	//printf("\n\nStarting Buf %u\n", buf);
-
-	int consumed_cache = 0;
-
+	int consumed_cache = sizeof(buf)*8;
 	while(out_count < orgi_size) {
+		// load bytes into cache if needed
+		while(consumed_cache >= 8 && bytes_left) {
+			buf |= (delta_enc[count++] << (consumed_cache -= 8));
+			bytes_left--;
+		}
+
 		token = buf >> 30;
 		if(token == 0x00) {
-			out[out_count] = orginal[out_count];
-			out_count++;
+			out[out_count] = orginal[out_count++];
 			consumed += 2;
 		} else if(token == 0x01) { //buf |= ((0x01 << 8) + b) << (cur_bit - 9);
 			b = (buf >> 22) & 0xff;
-			out[out_count] = orginal[out_count] ^ b;
-			out_count++;
+			out[out_count] = orginal[out_count++] ^ b;
 			consumed += 10;
 		} else if(token == 0x02) {// buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
 			len = (buf >> 26) & 0xf;
@@ -143,13 +137,6 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 		buf = buf << consumed;
 		consumed_cache += consumed;
 		consumed = 0;
-		//printf("Buf befor = %u\n", buf);
-		while(consumed_cache >= 8 && bytes_left) {
-			buf |= (delta_enc[count++] << (consumed_cache-8));
-			consumed_cache -= 8;
-			bytes_left--;
-		}
-		//printf("Buf after = %u\n", buf);
 	}
 }
 
