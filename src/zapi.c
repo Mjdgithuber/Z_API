@@ -85,9 +85,6 @@ unsigned minimum_scratch_size(page_opts* p_opts) {
 } */
 
 void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
-	printf("Tmp checksum %u\n\n", *delta_enc);
-
-
 	// get # of seqs in delta
 	unsigned seqs = (unsigned) delta_enc[0];
 	unsigned i, j;
@@ -118,38 +115,27 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 	int consumed_cache = 0;
 
 	while(out_count < orgi_size) {
-		printf("Count: %u/%u\n", out_count, orgi_size);
 		token = buf >> 30;
-		//printf("Count: %u, Token %u\n", out_count, token);
 		if(token == 0x00) {
 			out[out_count] = orginal[out_count];
 			out_count++;
 			consumed += 2;
-
-			printf("Received token 0\n");
 		} else if(token == 0x01) { //buf |= ((0x01 << 8) + b) << (cur_bit - 9);
 			b = (buf >> 22) & 0xff;
 			out[out_count] = orginal[out_count] ^ b;
 			out_count++;
 			consumed += 10;
-
-			printf("Received token 1 -> '%c'\n", out[out_count-1]);
 		} else if(token == 0x02) {// buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
 			len = (buf >> 26) & 0xf;
 			b = (buf >> 18) & 0xff;
-			for(j = 0; j <= len; j++, out_count++) {
+			for(j = 0; j <= len; j++, out_count++)
 				out[out_count] = orginal[out_count] ^ b;
-				printf("Received token 2\n");
-			}
-
 			consumed += 14;
 		} else if(token == 0x03 && consumed < 14) { // < 14 signals end if needed
 			len = (buf >> 22) & 0xff;
 			b = (buf >> 14) & 0xff;
-			for(j = 0; j <= len; j++, out_count++) {
+			for(j = 0; j <= len; j++, out_count++)
 				out[out_count] = orginal[out_count] ^ b;
-				printf("Received token 3\n");
-			}
 			consumed += 18;
 		} else return; // end mark hit return
 	
@@ -187,10 +173,7 @@ static int decompress_page_internal(header* h, BYTE* src, BYTE* dest, page_opts*
 		tmp = dp->id - start_index;
 		if(tmp >= 0 && tmp < blocks) {
 			addr = dest + p_opts->block_sz * tmp;
-			printf("Delta Match on %u %u! Char: '%c'\n", dp->id, p_opts->block_sz * tmp, *addr);
 			decode_packed(addr, p_opts->block_sz, dp->data, addr);
-
-			printf("\n\nEnd\n");
 		}
 		dp = dp->next;
 	}
@@ -289,9 +272,7 @@ static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, uns
 
 	// load delta block
 	BYTE* data = malloc(size);
-	printf("Src checksum: %u\n", *src);
 	memcpy(data, src, size);
-	printf("Data checksum: %u\n", *data);
 	db->data = data;
 	db->id = id;
 
@@ -303,8 +284,6 @@ static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, uns
 	db->next = (*next) ? (*next)->next : NULL;
 	free(*next);
 	(*next) = db;
-
-	printf("Head checksum: %u\n", *((*head)->data));
 }
 
 unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
