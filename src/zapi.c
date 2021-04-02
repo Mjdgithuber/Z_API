@@ -85,58 +85,44 @@ unsigned minimum_scratch_size(page_opts* p_opts) {
 } */
 
 void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
-	// get # of seqs in delta
-	unsigned seqs = (unsigned) delta_enc[0];
-	unsigned i, j;
+	unsigned i, len, buf = 0, i_c = 1, o_c = 0, bytes_left;
+	unsigned consumed_cache, c_tmp = 0;
+	BYTE b, token;
 
-	unsigned len;
-	BYTE b;
-
-	unsigned buf = 0;
-	char cur_bit = 31;
-	BYTE token;
-	unsigned count = 1;
-	
-	int bytes_left = (int) delta_enc[0];
-
-	int out_count = 0;
-
-	int consumed = 0;
-	
-	int consumed_cache = sizeof(buf)*8;
-	while(out_count < orgi_size) {
+	bytes_left = (unsigned) delta_enc[0];
+	consumed_cache = sizeof(buf)*8;
+	while(o_c < orgi_size) {
 		// load bytes into cache if needed
 		while(consumed_cache >= 8 && bytes_left) {
-			buf |= (delta_enc[count++] << (consumed_cache -= 8));
+			buf |= (delta_enc[i_c++] << (consumed_cache -= 8));
 			bytes_left--;
 		}
 
 		token = buf >> 30;
 		if(token == 0x00) {
-			out[out_count] = orginal[out_count++];
-			consumed += 2;
+			out[o_c] = orginal[o_c];
+			c_tmp = 2;
 		} else if(token == 0x01) { //buf |= ((0x01 << 8) + b) << (cur_bit - 9);
 			b = (buf >> 22) & 0xff;
-			out[out_count] = orginal[out_count++] ^ b;
-			consumed += 10;
+			out[o_c] = orginal[o_c] ^ b;
+			c_tmp = 10;
 		} else if(token == 0x02) {// buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
 			len = (buf >> 26) & 0xf;
 			b = (buf >> 18) & 0xff;
-			for(j = 0; j <= len; j++, out_count++)
-				out[out_count] = orginal[out_count] ^ b;
-			consumed += 14;
-		} else if(token == 0x03 && consumed < 14) { // < 14 signals end if needed
+			for(i = 0; i <= len; i++, o_c++)
+				out[o_c] = orginal[o_c] ^ b;
+			c_tmp = 14;
+		} else if(token == 0x03 && c_tmp < 14) { // < 14 signals end if needed
 			len = (buf >> 22) & 0xff;
 			b = (buf >> 14) & 0xff;
-			for(j = 0; j <= len; j++, out_count++)
-				out[out_count] = orginal[out_count] ^ b;
-			consumed += 18;
+			for(i = 0; i <= len; i++, o_c++)
+				out[o_c] = orginal[o_c] ^ b;
+			c_tmp = 18;
 		} else return; // end mark hit return
+		o_c += token <= 0x01 ? 1 : 0;
 	
-	
-		buf = buf << consumed;
-		consumed_cache += consumed;
-		consumed = 0;
+		buf = buf << c_tmp;
+		consumed_cache += c_tmp;
 	}
 }
 
