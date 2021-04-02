@@ -47,11 +47,6 @@ int page_size(BYTE* page);
 /* frees page and associated delta blocks */
 void free_page(BYTE* page);
 
-
-/* @return the minimum size of scratch buffer needed to be send to update_block */
-unsigned minimum_scratch_size(page_opts* p_opts);
-
-
 /* Updates one block in a page, this function will do one of the following operations
  * 1) perform a delta encoding of the changed data, this will change the total size of
  *    the page but will append to an internal linked list so no data from page buffer
@@ -66,6 +61,6 @@ unsigned minimum_scratch_size(page_opts* p_opts);
  *           also to be used to return a new compressed page when needed
  *           NOTE: scratch buffer must be at least as large as minimum_scratch_size() 
  */
-unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch);
+unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres);
 
 #endif

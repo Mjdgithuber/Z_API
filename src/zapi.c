@@ -63,12 +63,6 @@ static unsigned compression_max_size(page_opts* p_opts) {
 	return LZ4_COMPRESSBOUND(p_opts->block_sz) * p_opts->blocks;
 }
 
-unsigned minimum_scratch_size(page_opts* p_opts) {
-	return compression_max_size(p_opts) +         // for recompression
-		(p_opts->block_sz * p_opts->blocks);  // for decompression
-}
-
-
 /*unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
 	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	
@@ -258,9 +252,8 @@ static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, uns
 	(*next) = db;
 }
 
-unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
-	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
-	
+#define DELTA_BUF_SIZE 3000 // could be much less, just for testing
+unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres) {
 	// decompress entire page (TODO do partial and delta check)
 	header* h = (header*) page;
 
@@ -268,19 +261,19 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	int src_read = decompress_page_internal(h, page + sizeof(header), scratch, p_opts, lz4_sd, 0, unit + 1);
 
 	// generate delta block
-	int s_offset = p_opts->block_sz * unit;
-	int d_size = delta_packed(src, scratch + s_offset, p_opts->block_sz, scratch + p_opts->block_sz * p_opts->blocks, 100); //TODO ask about what the threshold should be
+	BYTE delta_buf[DELTA_BUF_SIZE];
+	int d_size = delta_packed(src, scratch + p_opts->block_sz * unit, p_opts->block_sz, (BYTE*) &delta_buf, thres); //TODO ask about what the threshold should be
 
 	printf("Delta size: %d\n", d_size);
 
-	if(!d_size) { // delta compression failed
-		// overwrite data
+	if(!d_size) {
 		printf("Delta failed!\n");
+		// copy change to scratch and decompress the rest of the page
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
 		decompress_page_internal(h, page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, unit+1, p_opts->blocks - (unit+1));
-	} else { // delta compression succeeded
-		printf("Delta succeeded! Checksum %u\n", *(scratch + p_opts->block_sz * p_opts->blocks));
-		update_delta_llist(&(h->delta_head), scratch + p_opts->block_sz * p_opts->blocks, d_size, unit);
+	} else {
+		printf("Delta succeeded!\n");
+		update_delta_llist(&(h->delta_head), (BYTE*) &delta_buf, d_size, unit);
 	}
 
 	LZ4_freeStreamDecode(lz4_sd);
@@ -295,14 +288,6 @@ int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
 	
 	decompress_page_internal(h, src + sizeof(header), dest, p_opts, lz4_sd, 0, blocks);
-	/*BYTE *c_src = src + sizeof(header);
-	BYTE *c_dest = dest;
-	for(i = 0; i < p_opts->blocks; i++) {
-		result = LZ4_decompress_safe_continue_unkown_size (lz4_sd, c_src, c_dest, p_opts->block_sz, 512);
-		c_src += result;
-		c_dest += p_opts->block_sz;
-		printf("Decompressed unit %u with compressed size of result %u\n", i, result);
-	}*/
 
 	LZ4_freeStreamDecode(lz4_sd);
 	return 1;

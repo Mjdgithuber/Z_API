@@ -36,8 +36,8 @@ void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_p
 	edit_block[3] = 'a';
 	edit_block[4] = '!';
 
-	BYTE* scratch = malloc(minimum_scratch_size(p_opts));
-	int delta_failed = update_block(edit_block, page, 4, p_opts, scratch);	
+	BYTE* scratch = malloc(p_opts->blocks * p_opts->block_sz);
+	int delta_failed = update_block(edit_block, page, 4, p_opts, scratch, 100);
 
 	if(delta_failed) printf("Need to allocate a new page\n");
 
