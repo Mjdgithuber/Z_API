@@ -149,9 +149,6 @@ static int decompress_page_internal(header* h, BYTE* src, BYTE* dest, page_opts*
 		dest += p_opts->block_sz;
 	}
 
-	// decompress needed delta blocks
-	apply_delta(h, dest - p_opts->block_sz * blocks, p_opts, start_index, blocks);
-
 	// TODO return -1 if fail
 	return c_read;
 }
@@ -237,7 +234,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 	}
 
 	// set size in bytes
-	b_out[0] = bytes_used; // TODO this should most likely be 2 bytes not just one
+	b_out[0] = bytes_used; // TODO this should most likely be 2 bytes not just one. NOTE if you change this you must also change updating total size t_size in update_delta_llist
 	return changed ? bytes_used + 1 : -1;
 }
 
@@ -254,14 +251,10 @@ static void update_delta_llist(header* h, BYTE* src, unsigned size, unsigned id)
 	delta_block** next = &(h->delta_head);
 	while(*next && (*next)->id != id)
 		next = &((*next)->next);
-
 	db->next = (*next) ? (*next)->next : NULL;
 	
-	// TODO update total size
-	h->t_size += sizeof(delta_block) + size - ((*next) ? sizeof(delta_block) + (unsigned char)(*next)->data[0] : 0);
-	if(*next) {
-		printf("Freeing delta block id -> %d\n", (*next)->id);
-	}
+	// update total size and free old delta if applicable
+	h->t_size += sizeof(delta_block) + size - ((*next) ? sizeof(delta_block) + (unsigned char)(*next)->data[0] + 1 : 0);
 	free(*next);
 	(*next) = db;
 }
@@ -285,6 +278,7 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 		// copy change to scratch and decompress the rest of the page
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
 		decompress_page_internal(h, page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, unit+1, p_opts->blocks - (unit+1));
+		apply_delta(h, scratch, p_opts, 0, p_opts->blocks);
 	} else if(d_size == -1) {
 		debug_printf("Nothing to change!\n");
 	} else {
@@ -304,6 +298,7 @@ int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
 	
 	decompress_page_internal(h, src + sizeof(header), dest, p_opts, lz4_sd, 0, blocks);
+	apply_delta(h, dest, p_opts, 0, p_opts->blocks);
 
 	LZ4_freeStreamDecode(lz4_sd);
 	return 1;
