@@ -123,10 +123,25 @@ void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 	}
 }
 
+static void apply_delta(header* h, BYTE* data, page_opts* p_opts, unsigned start, unsigned blocks) {
+	BYTE* addr;
+	unsigned tmp;
+
+	delta_block* dp = h->delta_head;
+	while(dp) {
+		debug_printf("Applying delta block #%u to decompression!\n", dp->id);
+		tmp = dp->id - start;
+		if(tmp >= 0 && tmp < blocks) {
+			addr = data + p_opts->block_sz * tmp;
+			decode_packed(addr, p_opts->block_sz, dp->data, addr);
+		}
+		dp = dp->next;
+	}
+}
+
 static int decompress_page_internal(header* h, BYTE* src, BYTE* dest, page_opts* p_opts, 
 	LZ4_streamDecode_t* stream, unsigned start_index, unsigned blocks) {
 
-	BYTE* addr;
 	unsigned i, tmp, c_read = 0;
 	for(i = 0; i < blocks; i++) {
 		tmp = LZ4_decompress_safe_continue_unkown_size (stream, src + c_read, dest, p_opts->block_sz, 512);
@@ -134,21 +149,9 @@ static int decompress_page_internal(header* h, BYTE* src, BYTE* dest, page_opts*
 		dest += p_opts->block_sz;
 	}
 
-	//printf("Decompressed %u starting from %u first char '%c'\n", blocks, start_index, );
-
 	// decompress needed delta blocks
-	delta_block* dp = h->delta_head;
-	dest = dest - p_opts->block_sz * blocks;
-	while(dp) {
-		debug_printf("Applying delta block #%u to decompression!\n", dp->id);
-		tmp = dp->id - start_index;
-		if(tmp >= 0 && tmp < blocks) {
-			addr = dest + p_opts->block_sz * tmp;
-			decode_packed(addr, p_opts->block_sz, dp->data, addr);
-		}
-		dp = dp->next;
-	}
-	
+	apply_delta(h, dest - p_opts->block_sz * blocks, p_opts, start_index, blocks);
+
 	// TODO return -1 if fail
 	return c_read;
 }
