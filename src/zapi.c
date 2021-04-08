@@ -8,7 +8,7 @@
 #include "zapi.h"
 
 
-#define DEBUG 0
+#define DEBUG 1
 #define debug_printf(fmt, ...) \
 	do { if(DEBUG) { printf("DEBUG: "); printf(fmt, ##__VA_ARGS__);} } while(0)
 
@@ -140,6 +140,7 @@ static int decompress_page_internal(header* h, BYTE* src, BYTE* dest, page_opts*
 	delta_block* dp = h->delta_head;
 	dest = dest - p_opts->block_sz * blocks;
 	while(dp) {
+		debug_printf("Applying delta block #%u to decompression!\n", dp->id);
 		tmp = dp->id - start_index;
 		if(tmp >= 0 && tmp < blocks) {
 			addr = dest + p_opts->block_sz * tmp;
@@ -233,11 +234,11 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 	}
 
 	// set size in bytes
-	b_out[0] = bytes_used;
+	b_out[0] = bytes_used; // TODO this should most likely be 2 bytes not just one
 	return changed ? bytes_used + 1 : -1;
 }
 
-static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, unsigned id) {
+static void update_delta_llist(header* h, BYTE* src, unsigned size, unsigned id) {
 	delta_block* db = malloc(sizeof(delta_block));
 
 	// load delta block
@@ -247,14 +248,17 @@ static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, uns
 	db->id = id;
 
 	// update/append to list
-	delta_block** next = head;
+	delta_block** next = &(h->delta_head);
 	while(*next && (*next)->id != id)
 		next = &((*next)->next);
 
 	db->next = (*next) ? (*next)->next : NULL;
 	
 	// TODO update total size
-
+	h->t_size += sizeof(delta_block) + size - ((*next) ? sizeof(delta_block) + (unsigned char)(*next)->data[0] : 0);
+	if(*next) {
+		printf("Freeing delta block id -> %d\n", (*next)->id);
+	}
 	free(*next);
 	(*next) = db;
 }
@@ -282,7 +286,7 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 		debug_printf("Nothing to change!\n");
 	} else {
 		debug_printf("Delta succeeded!\n");
-		update_delta_llist(&(h->delta_head), (BYTE*) &delta_buf, d_size, unit);
+		update_delta_llist(h, (BYTE*) &delta_buf, d_size, unit);
 	}
 
 	LZ4_freeStreamDecode(lz4_sd);
