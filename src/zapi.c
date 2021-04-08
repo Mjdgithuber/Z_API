@@ -8,6 +8,10 @@
 #include "zapi.h"
 
 
+#define DEBUG 0
+#define debug_printf(fmt, ...) \
+	do { if(DEBUG) { printf("DEBUG: "); printf(fmt, ##__VA_ARGS__);} } while(0)
+
 
 /*void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
 	header* h = (header*) block;
@@ -152,18 +156,18 @@ static BYTE pack_delta(unsigned length, BYTE delta, unsigned* buf, char* cur_bit
 	// a single null byte
 	if(delta == 0 && length < 7) { // length 0 is 1 (because you can't have 0 length rep)
 		// or with 0 same as doing nothing
-		printf("Writing token 0 %u times\n", length);
+		debug_printf("Writing token 0 %u times\n", length);
 		(*cur_bit) -= (length+1) * 2;
 	} else if(length == 0) { // non null byte with length of 1
-		printf("Writing token 1\n");
+		debug_printf("Writing token 1\n");
 		(*buf) |= ((0x01 << 8) + delta) << (*cur_bit - 9);
 		(*cur_bit) -= 10;
 	} else if(length <= 0xf) { // non null bytes with length of 16 or less
-		printf("Writing token 2 with length %u\n", length);
+		debug_printf("Writing token 2 with length %u\n", length);
 		(*buf) |= ((0x02 << 12) + (length << 8) + delta) << (*cur_bit - 13);
 		(*cur_bit) -= 14;
 	} else { // non null bytes with length greater than 16
-		printf("Writing token 3 with length %u\n", length);
+		debug_printf("Writing token 3 with length %u\n", length);
 		(*buf) |= ((0x03 << 16) + (length << 8) + delta) << (*cur_bit - 17);
 		(*cur_bit) -= 18;
 	}
@@ -217,7 +221,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 		}
 	}
 
-	printf("%u bytes changed!\n", changed);
+	debug_printf("%u bytes changed! cur_bit: %d\n", changed, cur_bit);
 
 	// do final dump NOTE: at this point cur_bit is guarantee to be within 7 bits of 31 so no need for a while also encode end if needed with 0x03
 	if(cur_bit != 31) {
@@ -230,7 +234,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 
 	// set size in bytes
 	b_out[0] = bytes_used;
-	return bytes_used + 1;
+	return changed ? bytes_used + 1 : -1;
 }
 
 static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, unsigned id) {
@@ -248,6 +252,9 @@ static void update_delta_llist(delta_block** head, BYTE* src, unsigned size, uns
 		next = &((*next)->next);
 
 	db->next = (*next) ? (*next)->next : NULL;
+	
+	// TODO update total size
+
 	free(*next);
 	(*next) = db;
 }
@@ -264,15 +271,17 @@ unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, B
 	BYTE delta_buf[DELTA_BUF_SIZE];
 	int d_size = delta_packed(src, scratch + p_opts->block_sz * unit, p_opts->block_sz, (BYTE*) &delta_buf, thres); //TODO ask about what the threshold should be
 
-	printf("Delta size: %d\n", d_size);
+	debug_printf("Delta size: %d + %u (in overhead)\n", d_size, sizeof(delta_block));
 
 	if(!d_size) {
-		printf("Delta failed!\n");
+		debug_printf("Delta failed!\n");
 		// copy change to scratch and decompress the rest of the page
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
 		decompress_page_internal(h, page + sizeof(header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, unit+1, p_opts->blocks - (unit+1));
+	} else if(d_size == -1) {
+		debug_printf("Nothing to change!\n");
 	} else {
-		printf("Delta succeeded!\n");
+		debug_printf("Delta succeeded!\n");
 		update_delta_llist(&(h->delta_head), (BYTE*) &delta_buf, d_size, unit);
 	}
 
@@ -308,7 +317,7 @@ unsigned compress_page(BYTE* src, BYTE* dest, unsigned thres, header* h, page_op
 
 		c_src += p_opts->block_sz;
 		c_dest += c_bytes;
-		printf("Compressed unit %u/%u from %u -> %d!\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes);
+		debug_printf("Compressed unit %u/%u from %u -> %d!\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes);
 	}
 	LZ4_freeStream(lz4_s);
 	return (h->t_size += (c_dest - dest));
