@@ -1,6 +1,12 @@
 #ifndef __ZAPI__H__
 #define __ZAPI__H__
 
+#define NM  "\x1B[0m"
+#define RD  "\x1B[31m"
+#define GN  "\x1B[32m"
+#define MG  "\x1B[35m"
+#define YL  "\x1B[33m"
+
 typedef unsigned char BYTE;
 typedef char          LZ4_BYTE;
 

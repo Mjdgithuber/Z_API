@@ -7,6 +7,37 @@
 #include "lz4.h"
 #include "zapi.h"
 
+BYTE* generate_random_edit(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned block, unsigned bytes_to_change) {
+	BYTE* b_off = dest + p_opts->block_sz * block;
+	unsigned i, start;
+
+	// start by copying data
+	memcpy(dest, src, p_opts->block_sz * p_opts->blocks);
+
+	start = rand() % (p_opts->block_sz - bytes_to_change);
+	for(i = 0; i < bytes_to_change; i++)
+		b_off[start++] = rand() % 256; // 0 - 255
+
+	// return ptr to block offset within dest
+	return b_off;
+}
+
+BYTE cmp_page(BYTE* page, BYTE* raw_cmp_data, page_opts* p_opts) {
+	BYTE* uc_pg, ret;
+
+	// create decompression buffer & compare
+	uc_pg = malloc(p_opts->block_sz * p_opts->blocks);
+	zapi_decompress_page(page, uc_pg, p_opts, p_opts->blocks);
+	ret = !memcmp(raw_cmp_data, uc_pg, p_opts->blocks * p_opts->block_sz);
+	free(uc_pg);
+
+	if(ret)
+		printf(GN "=== SUCCESS: Page and raw data match! ===\n" NM);
+	else
+		printf(RD "=== FAILURE: Page and raw data do not match! ===\n" NM);
+	return ret;
+}
+
 char read_file(const char* file, BYTE* buf, unsigned size) {
 	FILE* fp;
 	int read;
@@ -21,6 +52,84 @@ char read_file(const char* file, BYTE* buf, unsigned size) {
 	} else printf("Read %d bytes from '%s'\n", read, file);
 
 	return 1;
+}
+
+void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
+	unsigned blk, bytes, uc_size, delta_failed, last, i;
+	BYTE* edit_full, *edit_par, *scratch;
+
+	printf(YL "\nDelta Battery Test:\n" NM);
+	uc_size = p_opts->blocks * p_opts->block_sz;
+	
+	edit_full = malloc(uc_size);
+	scratch = malloc(uc_size);
+
+	for(i = 0; i < 2; i++) {
+		blk = rand() % p_opts->blocks;
+		bytes = rand() % 12;
+		edit_par = generate_random_edit(start_data, edit_full, p_opts, blk, bytes);
+		last = zapi_page_size(start_page);
+		printf("Changed %u bytes of block %u\n", bytes, blk);
+		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
+		printf("Page size %u -> %u (%u changed)\n", last, zapi_page_size(start_page), zapi_page_size(start_page) - last);
+		if(delta_failed) printf("Need to allocate a new page\n");
+		cmp_page(start_page, edit_full, p_opts);
+	}
+
+	printf("\n");
+	
+	free(scratch);
+	free(edit_full);
+}
+
+void run_tests() {
+	BYTE* start_data;
+
+	page_opts p_opts;
+	p_opts.block_sz = 256;
+	p_opts.blocks = 8;
+
+	// read input start file
+	unsigned size = p_opts.block_sz * p_opts.blocks;
+	start_data = malloc(size);
+	if(!read_file("test_compress.txt", start_data, size))
+		return;
+
+	// generate test page
+	unsigned p_size;
+	BYTE* scratch = malloc(size);
+	printf(YL "\nInit Compression Test:\n" NM);
+	p_size = zapi_generate_page(start_data, scratch, &p_opts, size);
+
+	// copy into correct size buffer
+	BYTE* page = malloc(p_size);
+	memcpy(page, scratch, p_size);
+	printf("Generated page with compressed size of %u, REPORTED SIZE: %u\n", p_size, zapi_page_size(page));
+	printf("Compression ratio %.2f\n\n", (float)size/p_size);
+
+	cmp_page(page, start_data, &p_opts);
+
+	delta_battery(&p_opts, page, start_data);
+
+	zapi_free_page(page);
+	free(scratch);
+	free(start_data);
+	free(page);
+
+	/*printf("Decompression Test:\nDecompressing page...\n");
+	BYTE* decomp_page = malloc(size);
+	zapi_decompress_page(page, decomp_page, &p_opts, p_opts.blocks);
+	if(!memcmp(decomp_page, test_data, size))
+		printf("Decompression successfully matched original data\n");
+	else
+		printf("Decompression failed to match original data\n");
+	
+	run_delta_test(page, test_data, &p_opts, decomp_page);
+
+	zapi_free_page(page);
+	free(page);
+	free(test_data);
+	free(scratch);*/
 }
 
 void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_page) {
@@ -125,7 +234,7 @@ void test() {
 }
 
 int main() {
-	test();
+	run_tests();
 
 	return 0;
 /*	FILE* fp;
