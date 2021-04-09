@@ -27,7 +27,7 @@ void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_p
 	BYTE* edit_block = malloc(p_opts->block_sz);
 
 	// copy org data and make some changes to block 4 (0 indexed)
-	printf("\nRunning delta tests with starting page size %u:\n", page_size(page));
+	printf("\nRunning delta tests with starting page size %u:\n", zapi_page_size(page));
 	printf("Making edits to block 4\n");
 	memcpy(edit_block, test_data + 4*p_opts->block_sz, p_opts->block_sz);
 	edit_block[0] = 'E';
@@ -43,18 +43,18 @@ void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_p
 	
 	BYTE* scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	BYTE* recomp_page = malloc(10000);
-	int ss = update_block_recomp(edit_block, page, 4, p_opts, scratch, 10000, recomp_page);
+	int ss = zapi_update_block_recomp(edit_block, page, 4, p_opts, scratch, 10000, recomp_page);
 	//update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned thres, BYTE* recomp_page)
 	
 	printf("NEW SIZE: %u\n", ss);
 
 	BYTE* tight_page = malloc(ss);
 	memcpy(tight_page, recomp_page, ss);
-	decompress_page(tight_page, scratch, p_opts, p_opts->blocks);
+	zapi_decompress_page(tight_page, scratch, p_opts, p_opts->blocks);
 
 	printf("1: %s\n2: %s\n", compare, scratch);
 	if(!memcmp(scratch, compare, p_opts->blocks * p_opts->block_sz))
-		printf("Decompression successfully matched original data with new size of %u\n", page_size(tight_page));	
+		printf("Decompression successfully matched original data with new size of %u\n", zapi_page_size(tight_page));	
 	else
 		printf("Decompression failed to match original data\n");
 
@@ -100,17 +100,17 @@ void test() {
 	unsigned p_size;
 	BYTE* scratch = malloc(size * 2);
 	printf("\nCompression Test:\n");
-	p_size = generate_page(test_data, scratch, &p_opts, size * 2);
+	p_size = zapi_generate_page(test_data, scratch, &p_opts, size * 2);
 
 	// copy into correct size buffer
 	BYTE* page = malloc(p_size);
 	memcpy(page, scratch, p_size);
-	printf("Generated page with compressed size of %u, REPORTED SIZE: %u\n", p_size, page_size(page));
+	printf("Generated page with compressed size of %u, REPORTED SIZE: %u\n", p_size, zapi_page_size(page));
 	printf("Compression ratio %.2f\n\n", (float)size/p_size);
 
 	printf("Decompression Test:\nDecompressing page...\n");
 	BYTE* decomp_page = malloc(size);
-	decompress_page(page, decomp_page, &p_opts, p_opts.blocks);
+	zapi_decompress_page(page, decomp_page, &p_opts, p_opts.blocks);
 	if(!memcmp(decomp_page, test_data, size))
 		printf("Decompression successfully matched original data\n");
 	else
@@ -118,7 +118,7 @@ void test() {
 	
 	run_delta_test(page, test_data, &p_opts, decomp_page);
 
-	free_page(page);
+	zapi_free_page(page);
 	free(page);
 	free(test_data);
 	free(scratch);

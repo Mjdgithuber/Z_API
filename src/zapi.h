@@ -8,17 +8,16 @@ struct delta;
 typedef struct __attribute__((__packed__)) delta {
 	struct delta* next;
 	short int id;
-} delta_block;
+} zapi_delta_block;
 
 typedef struct {
 	short int t_size; /* total size of compressed page + deltas in bytes */
-	delta_block* delta_head; /* head of delta linked list */
-} header;
+	zapi_delta_block* delta_head; /* head of delta linked list */
+} zapi_page_header;
 
 typedef struct {
 	short int block_sz; /* in bytes */
 	short int blocks;   /* number of blocks */
-	
 } page_opts;
 
 /*
@@ -29,7 +28,7 @@ typedef struct {
  * @return # of bytes written to 'dest', returns 0 if compression failed to compress
  * 	into 'thres' bytes
  */
-unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres);
+unsigned zapi_generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres);
 
 /*
  * Decompress page 'src' into 'dest'
@@ -37,14 +36,14 @@ unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres)
  * @return status { 0 -> failed, 1 -> success }
  */
 //int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts);
-int decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks);
+int zapi_decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks);
 
 
 /* @return the total size of the page including metadata */
-int page_size(BYTE* page);
+int zapi_page_size(BYTE* page);
 
 /* frees page and associated delta blocks */
-void free_page(BYTE* page);
+void zapi_free_page(BYTE* page);
 
 /* Updates one block in a page, this function will do one of the following operations
  * 1) perform a delta encoding of the changed data, this will change the total size of
@@ -60,6 +59,6 @@ void free_page(BYTE* page);
  *           also to be used to return a new compressed page when needed
  *           NOTE: scratch buffer must be at least as large as minimum_scratch_size() 
  */
-unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres);
+unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres);
 
 #endif
