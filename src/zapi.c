@@ -269,16 +269,16 @@ unsigned update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p
 	// decompress up to block to be updated
 	header* h = (header*) page;
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	src_read = decompress_page_internal(h, page + sizeof(header), scratch, p_opts, lz4_sd, 0, block + 1); // TODO edit dpi to return src_read to a block
+	src_read = decompress_page_internal(h, page + sizeof(header), scratch, p_opts, lz4_sd, 0, block); // TODO edit dpi to return src_read to a block
 
 	// decompress the rest of the page and apply delta
-	decompress_page_internal(h, page + sizeof(header) + src_read, scratch + p_opts->block_sz * (block + 1), p_opts, lz4_sd, block+1, p_opts->blocks - (block+1));
-	apply_delta(h, scratch + p_opts->block_sz * (block + 1), p_opts, block, p_opts->blocks); // TODO exclude blocks to be updated
+	decompress_page_internal(h, page + sizeof(header) + src_read, scratch + p_opts->block_sz * block, p_opts, lz4_sd, block, p_opts->blocks - block);
+	apply_delta(h, scratch + p_opts->block_sz * block, p_opts, block, p_opts->blocks); // TODO exclude blocks to be updated
 
 	// prepare for recompression
 	LZ4_stream_t* lz4_s = LZ4_createStream();
 	LZ4_loadDict(lz4_s, scratch, (p_opts->block_sz * block));
-	memcpy(scratch + p_opts->block_sz * (block + 1), src, p_opts->block_sz);
+	memcpy(scratch + p_opts->block_sz * block, src, p_opts->block_sz);
 
 	// setup new page
 	header* new_h = (header*) recomp_page;
@@ -288,8 +288,8 @@ unsigned update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p
 	memcpy(recomp_page + sizeof(header), page + sizeof(header), src_read);
 
 	// TODO add in threshold for recompression to fail
-	page_opts n_opts = { .block_sz = p_opts->block_sz, .blocks = p_opts->blocks - block - 1 };
-	return compress_page(lz4_s, scratch + p_opts->block_sz * (block + 1), recomp_page + sizeof(header) + src_read, 10000, new_h, &n_opts);
+	page_opts n_opts = { .block_sz = p_opts->block_sz, .blocks = p_opts->blocks - block };
+	return compress_page(lz4_s, scratch + p_opts->block_sz * block, recomp_page + sizeof(header) + src_read, 10000, new_h, &n_opts);
 
 	// TODO add delta head and remove old deltas steal deltas
 
