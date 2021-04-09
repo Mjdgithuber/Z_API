@@ -27,7 +27,7 @@ void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_p
 	BYTE* edit_block = malloc(p_opts->block_sz);
 
 	// copy org data and make some changes to block 4 (0 indexed)
-	printf("\nRunning delta tests:\n");
+	printf("\nRunning delta tests with starting page size %u:\n", page_size(page));
 	printf("Making edits to block 4\n");
 	memcpy(edit_block, test_data + 4*p_opts->block_sz, p_opts->block_sz);
 	edit_block[0] = 'E';
@@ -36,21 +36,52 @@ void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_p
 	edit_block[3] = 'a';
 	edit_block[4] = '!';
 
+	BYTE* compare = malloc(p_opts->block_sz * p_opts->blocks);
+	memcpy(compare, test_data, p_opts->block_sz * p_opts->blocks);
+	memcpy(compare+4*p_opts->block_sz, edit_block, p_opts->block_sz);
+
+	
 	BYTE* scratch = malloc(p_opts->blocks * p_opts->block_sz);
+	BYTE* recomp_page = malloc(10000);
+	int ss = update_block_recomp(edit_block, page, 4, p_opts, scratch, 10000, recomp_page);
+	//update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned thres, BYTE* recomp_page)
+	
+	printf("NEW SIZE: %u\n", ss);
+
+	BYTE* tight_page = malloc(ss);
+	memcpy(tight_page, recomp_page, ss);
+	decompress_page(tight_page, scratch, p_opts, p_opts->blocks);
+
+	printf("1: %s\n2: %s\n", compare, scratch);
+	if(!memcmp(scratch, compare, p_opts->blocks * p_opts->block_sz))
+		printf("Decompression successfully matched original data with new size of %u\n", page_size(tight_page));	
+	else
+		printf("Decompression failed to match original data\n");
+
+	free(tight_page);	
+	free(recomp_page);
+
+
+
+	/*BYTE* scratch = malloc(p_opts->blocks * p_opts->block_sz);
+	edit_block[4] = test_data[4*p_opts->block_sz + 4];
+	update_block(edit_block, page, 4, p_opts, scratch, 100);
+	edit_block[4] = '!';
+
 	int delta_failed = update_block(edit_block, page, 4, p_opts, scratch, 100);
 
 	if(delta_failed) printf("Need to allocate a new page\n");
 
 	decompress_page(page, dump_page, p_opts, p_opts->blocks);
-	if(!memcmp(dump_page, test_data, p_opts->blocks * p_opts->block_sz))
-		printf("Decompression successfully matched original data\n");
+	if(!memcmp(dump_page, compare, p_opts->blocks * p_opts->block_sz))
+		printf("Decompression successfully matched original data with new size of %u\n", page_size(page));
 	else
 		printf("Decompression failed to match original data\n");	
 	
 	printf("\nUncomp  buffer: '%s'\n", dump_page);
 
 	free(scratch);
-	free(edit_block);
+	free(edit_block);*/
 }
 
 void test() {
