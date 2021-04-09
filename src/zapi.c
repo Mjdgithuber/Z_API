@@ -7,9 +7,14 @@
 #include "lz4.h"
 #include "zapi.h"
 
-#define DEBUG 1
-#define debug_printf(fmt, ...) \
-	do { if(DEBUG) printf(MG "DEBUG: " NM fmt, ##__VA_ARGS__); } while(0)
+#define DEBUG_FLAG 1
+//#define debug_printf(level, fmt, ...) \
+//	do { if(DEBUG) printf(MG "DEBUG: " NM fmt, ##__VA_ARGS__); } while(0)
+
+#define DEBUG MG "DEBUG: "
+#define INFO CY "INFO: "
+#define debug_printf(level, fmt, ...) \
+	do { if(DEBUG_FLAG) printf(level NM fmt, ##__VA_ARGS__); } while(0)
 
 
 int zapi_page_size(BYTE* page) {
@@ -22,7 +27,7 @@ void zapi_free_page(BYTE* page) {
 
 	// free delta linked list
 	while(db) {
-		debug_printf("Freeing delta block with id %u\n", db->id);
+		debug_printf(DEBUG, "Freeing delta block with id %u\n", db->id);
 		tmp = db->next;
 		free(db);
 		db = tmp;
@@ -77,7 +82,7 @@ static void apply_delta(zapi_page_header* h, BYTE* data, page_opts* p_opts, unsi
 
 	zapi_delta_block* dp = h->delta_head;
 	while(dp) {
-		debug_printf("Applying delta block #%u to decompression!\n", dp->id);
+		debug_printf(DEBUG, "Applying delta block #%u to decompression!\n", dp->id);
 		tmp = dp->id - start;
 		if(tmp >= 0 && tmp < blocks) {
 			addr = data + p_opts->block_sz * tmp;
@@ -93,7 +98,7 @@ static int decompress_page_internal(zapi_page_header* h, BYTE* src, BYTE* dest, 
 	unsigned i, tmp, c_read = 0;
 	for(i = 0; i < blocks; i++) {
 		tmp = LZ4_decompress_safe_continue_unkown_size (stream, (LZ4_BYTE*)src + c_read, (LZ4_BYTE*)dest, p_opts->block_sz, 512);
-		debug_printf("Decompressed %u/%u! First byte (raw): %c\n", start_index+i+1, p_opts->blocks, *dest);
+		debug_printf(DEBUG, "Decompressed %u/%u! First byte (raw): %c\n", start_index+i+1, p_opts->blocks, *dest);
 		c_read += tmp;
 		dest += p_opts->block_sz;
 	}
@@ -106,18 +111,18 @@ static BYTE pack_delta(unsigned length, BYTE delta, unsigned* buf, char* cur_bit
 	// a single null byte
 	if(delta == 0 && length < 7) { // length 0 is 1 (because you can't have 0 length rep)
 		// or with 0 same as doing nothing
-		debug_printf("Writing token 0 %u times\n", length);
+		debug_printf(INFO, "Writing token 0 %u times\n", length);
 		(*cur_bit) -= (length+1) * 2;
 	} else if(length == 0) { // non null byte with length of 1
-		debug_printf("Writing token 1\n");
+		debug_printf(INFO, "Writing token 1\n");
 		(*buf) |= ((0x01 << 8) + delta) << (*cur_bit - 9);
 		(*cur_bit) -= 10;
 	} else if(length <= 0xf) { // non null bytes with length of 16 or less
-		debug_printf("Writing token 2 with length %u\n", length);
+		debug_printf(INFO, "Writing token 2 with length %u\n", length);
 		(*buf) |= ((0x02 << 12) + (length << 8) + delta) << (*cur_bit - 13);
 		(*cur_bit) -= 14;
 	} else { // non null bytes with length greater than 16
-		debug_printf("Writing token 3 with length %u\n", length);
+		debug_printf(INFO, "Writing token 3 with length %u\n", length);
 		(*buf) |= ((0x03 << 16) + (length << 8) + delta) << (*cur_bit - 17);
 		(*cur_bit) -= 18;
 	}
@@ -171,7 +176,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 		}
 	}
 
-	debug_printf("%u bytes changed! cur_bit: %d\n", changed, cur_bit);
+	debug_printf(DEBUG, "%u bytes changed! cur_bit: %d\n", changed, cur_bit);
 
 	// do final dump NOTE: at this point cur_bit is guarantee to be within 7 bits of 31 so no need for a while also encode end if needed with 0x03
 	if(cur_bit != 31) {
@@ -202,7 +207,7 @@ static void update_delta_llist(zapi_page_header* h, BYTE* src, unsigned size, un
 	
 	// update total size and free old delta if applicable
 	h->t_size += size - ((*next) ? *(((BYTE*)*next)+sizeof(zapi_delta_block)) + 1 : sizeof(zapi_delta_block) * -1);
-	debug_printf("%s %u\n", (*next) ? "Freed older delta block and generated new delta block for id " : "generated new delta block for id ", id);
+	debug_printf(DEBUG, "%s %u\n", (*next) ? "Freed older delta block and generated new delta block for id " : "generated new delta block for id ", id);
 	free(*next);
 	(*next) = db;
 }
@@ -219,18 +224,18 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_op
 	BYTE delta_buf[DELTA_BUF_SIZE];
 	int d_size = delta_packed(src, scratch + p_opts->block_sz * unit, p_opts->block_sz, (BYTE*) &delta_buf, thres); //TODO ask about what the threshold should be
 
-	debug_printf("Delta size: %d + %zu (in overhead)\n", d_size, sizeof(zapi_delta_block));
+	debug_printf(DEBUG, "Delta size: %d + %zu (in overhead)\n", d_size, sizeof(zapi_delta_block));
 
 	if(!d_size) {
-		debug_printf("Delta failed!\n");
+		debug_printf(DEBUG, "Delta failed!\n");
 		// copy change to scratch and decompress the rest of the page
 		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
 		decompress_page_internal(h, page + sizeof(zapi_page_header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, unit+1, p_opts->blocks - (unit+1));
 		apply_delta(h, scratch, p_opts, 0, p_opts->blocks);
 	} else if(d_size == -1) {
-		debug_printf("Nothing to change!\n");
+		debug_printf(DEBUG, "Nothing to change!\n");
 	} else {
-		debug_printf("Delta succeeded!\n");
+		debug_printf(DEBUG, "Delta succeeded!\n");
 		update_delta_llist(h, (BYTE*) &delta_buf, d_size, unit);
 	}
 
@@ -251,11 +256,11 @@ static unsigned compress_page_internal(LZ4_stream_t* stream, BYTE* src, BYTE* de
 
 		// can't compress into thres size
 		if(c_bytes == 0) {
-			debug_printf("Failed to compress page into %u bytes!\n", thres);
+			debug_printf(DEBUG, "Failed to compress page into %u bytes!\n", thres);
 			return 0;
 		}
 
-		debug_printf("Compressed unit %u/%u from %u -> %d! First byte (raw): %c\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes, *c_src);
+		debug_printf(DEBUG, "Compressed unit %u/%u from %u -> %d! First byte (raw): %c\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes, *c_src);
 		c_src += p_opts->block_sz;
 		c_dest += c_bytes;
 	}
@@ -322,7 +327,7 @@ int zapi_decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned bloc
 unsigned zapi_generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres) {
 	// thres check
 	if(thres < (sizeof(zapi_page_header) + 1)) {
-		debug_printf("Theshold %u not large enough to store page header (%zu)!\n", thres, sizeof(zapi_page_header));
+		debug_printf(DEBUG, "Theshold %u not large enough to store page header (%zu)!\n", thres, sizeof(zapi_page_header));
 		return 0;
 	}
 

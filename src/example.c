@@ -7,12 +7,9 @@
 #include "lz4.h"
 #include "zapi.h"
 
-BYTE* generate_random_edit(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned block, unsigned bytes_to_change) {
+BYTE* generate_random_edit(BYTE* dest, page_opts* p_opts, unsigned block, unsigned bytes_to_change) {
 	BYTE* b_off = dest + p_opts->block_sz * block;
 	unsigned i, start;
-
-	// start by copying data
-	memcpy(dest, src, p_opts->block_sz * p_opts->blocks);
 
 	start = rand() % (p_opts->block_sz - bytes_to_change);
 	for(i = 0; i < bytes_to_change; i++)
@@ -64,10 +61,13 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	edit_full = malloc(uc_size);
 	scratch = malloc(uc_size);
 
+	// copy start into edit
+	memcpy(edit_full, start_data, p_opts->block_sz * p_opts->blocks);
+
 	for(i = 0; i < 2; i++) {
 		blk = rand() % p_opts->blocks;
 		bytes = rand() % 12;
-		edit_par = generate_random_edit(start_data, edit_full, p_opts, blk, bytes);
+		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
 		last = zapi_page_size(start_page);
 		printf("Changed %u bytes of block %u\n", bytes, blk);
 		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
