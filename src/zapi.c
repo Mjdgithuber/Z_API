@@ -133,7 +133,7 @@ static void apply_delta(header* h, BYTE* data, page_opts* p_opts, unsigned start
 		tmp = dp->id - start;
 		if(tmp >= 0 && tmp < blocks) {
 			addr = data + p_opts->block_sz * tmp;
-			decode_packed(addr, p_opts->block_sz, dp->data, addr);
+			decode_packed(addr, p_opts->block_sz, (BYTE*)dp + sizeof(delta_block), addr);
 		}
 		dp = dp->next;
 	}
@@ -239,12 +239,10 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 }
 
 static void update_delta_llist(header* h, BYTE* src, unsigned size, unsigned id) {
-	delta_block* db = malloc(sizeof(delta_block));
+	delta_block* db = malloc(sizeof(delta_block) + size);
 
 	// load delta block
-	BYTE* data = malloc(size);
-	memcpy(data, src, size);
-	db->data = data;
+	memcpy((BYTE*)db + sizeof(delta_block), src, size);
 	db->id = id;
 
 	// update/append to list
@@ -254,7 +252,7 @@ static void update_delta_llist(header* h, BYTE* src, unsigned size, unsigned id)
 	db->next = (*next) ? (*next)->next : NULL;
 	
 	// update total size and free old delta if applicable
-	h->t_size += sizeof(delta_block) + size - ((*next) ? sizeof(delta_block) + (unsigned char)(*next)->data[0] + 1 : 0);
+	h->t_size += size - ((*next) ? *(((BYTE*)*next)+sizeof(delta_block)) + 1 : sizeof(delta_block) * -1);
 	free(*next);
 	(*next) = db;
 }

@@ -5,9 +5,8 @@ typedef unsigned char BYTE;
 
 struct delta;
 
-typedef struct delta {
+typedef struct __attribute__((__packed__)) delta {
 	struct delta* next;
-	BYTE* data;
 	short int id;
 } delta_block;
 
