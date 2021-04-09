@@ -7,43 +7,9 @@
 #include "lz4.h"
 #include "zapi.h"
 
-
 #define DEBUG 1
 #define debug_printf(fmt, ...) \
 	do { if(DEBUG) { printf("DEBUG: "); printf(fmt, ##__VA_ARGS__);} } while(0)
-
-
-/*void update(BYTE* src, BYTE* block, BYTE* new_block, int dest_size, int unit) {
-	header* h = (header*) block;
-	BYTE* tmp = malloc(h->unit_size * h->units);
-
-	// for now decompress the entire block
-	decompress_block(block, tmp, -1);
-
-	// overwrite data
-	memcpy(tmp + (h->unit_size * unit), src, h->unit_size);
-
-	// rebuild dict
-	LZ4_loadDict(make_stream_here, tmp, (h->unit_size * unit));
-
-	// recompress need to fix the function call with header
-	compress_block(tmp, new_block, dest_size, h, TODO_size ret);
-}*/
-
-
-/*void inplace_edit(BYTE* block, BYTE* edit, unsigned start_unit, unsigned end_unit) {
-	
-	header* h = (header*) src;
-	BYTE* decomp_buf = malloc(h->unit_size * h->units);
-
-	decompress_block(block, decomp_buf, -1);
-	
-	// replace bytes in decomp buffer
-	// load dict from [0, start_unit)
-	// recompress
-
-	free(decomp_buf);
-}*/
 
 
 int page_size(BYTE* page) {
@@ -56,7 +22,7 @@ void free_page(BYTE* page) {
 
 	// free delta linked list
 	while(db) {
-		printf("Freeing delta block with id %u\n", db->id);
+		debug_printf("Freeing delta block with id %u\n", db->id);
 		tmp = db->next;
 		free(db);
 		db = tmp;
@@ -66,20 +32,6 @@ void free_page(BYTE* page) {
 static unsigned compression_max_size(page_opts* p_opts) {
 	return LZ4_COMPRESSBOUND(p_opts->block_sz) * p_opts->blocks;
 }
-
-/*unsigned update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch) {
-	//if(!scratch) scratch = malloc(p_opts->blocks * p_opts->block_sz);
-	
-	// decompress entire page (TODO do partial and delta check)
-	unsigned offset = compression_max_size(p_opts);
-	decompress_page(page, scratch + offset, p_opts);
-
-	// for now just overwrite data and recompress (no delta yet)
-	memcpy(scratch + offset + (p_opts->block_sz * unit), src, p_opts->block_sz);
-	
-	// TODO must replace offset with something else
-	return generate_page(scratch + offset, scratch, p_opts, offset);
-} */
 
 void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 	unsigned i, len, buf = 0, i_c = 1, o_c = 0, bytes_left;
@@ -336,153 +288,3 @@ unsigned generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres)
 
 	return compress_page(src, dest + sizeof(header), thres - sizeof(header), h, p_opts);
 }
-
-/*unsigned delta(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size) {
-	int i;
-	BYTE* enc = b_out+1; // +1 for size
-
-	int valid = 0;
-	unsigned int count = 0;
-	BYTE last_b = 0;
-	BYTE delta;
-	for(i = 0; i < ib_size; i++) {
-		delta = b0[i] ^ b1[i];
-		if(delta == last_b) count++;
-		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
-			// write last run
-			if(count) {
-				// bounds check
-				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
-
-				enc[valid++] = count-1;
-				enc[valid++] = last_b;
-			}
-
-			// TODO rewrite this with a loop
-			if(i == ib_size-1 && delta != last_b) {
-				// bounds check
-				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
-				enc[valid++] = 0;
-				enc[valid++] = delta;
-			}
-			count = 1;
-			last_b = delta;
-		}
-	}
-
-	b_out[0] = valid;
-	return valid + 1;
-}*/
-
-/*unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int max_output_size, BYTE* tiny) {
-	int i;
-	BYTE* enc = b_out+1; // +1 for size
-
-	int valid = 0;
-	unsigned int count = 0;
-	BYTE last_b = 0;
-	BYTE delta;
-
-	int changed = 0;
-	for(i = 0; i < ib_size; i++) {
-		delta = b0[i] ^ b1[i];
-		
-		if(delta) changed++;
-	
-		if(delta == last_b) count++;
-		if(delta != last_b || i == ib_size-1 || count == (UCHAR_MAX+1)) {
-			// write last run
-			if(count) {
-				// bounds check
-				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
-
-				enc[valid++] = count-1;
-				enc[valid++] = last_b;
-			}
-
-			// TODO rewrite this with a loop
-			if(i == ib_size-1 && delta != last_b) {
-				// bounds check
-				if(valid + 3 > max_output_size || ((valid + 2) > UCHAR_MAX)) return 0;
-				enc[valid++] = 0;
-				enc[valid++] = delta;
-			}
-			count = 1;
-			last_b = delta;
-		}
-	}
-
-	printf("%u bytes changed!\n", changed);
-
-	b_out[0] = valid;
-
-	int len;
-	BYTE b;
-	unsigned buf = 0;
-	char cur_bit = 31;
-	count = 1;
-	for(i = 0; i < valid; i += 2) {
-		len = enc[i];
-		b = enc[i+1];
-		
-		// a single null byte
-		if(b == 0 && len < 7) { // len 0 is 1 (because you can't have 0 length rep)
-			// or with 0 same as doing nothing
-			printf("Writing token 0 %u times\n", len);
-			cur_bit -= (len+1) * 2;
-		} else if(len == 0) { // non null byte with len of 1
-			printf("Writing token 1\n");
-			buf |= ((0x01 << 8) + b) << (cur_bit - 9);
-			cur_bit -= 10;
-		} else if(len <= 0xf) { // non null bytes with len of 16 or less
-			printf("Writing token 2 with len %u\n", len);
-			buf |= ((0x02 << 12) + (len << 8) + b) << (cur_bit - 13);
-			cur_bit -= 14;
-		} else { // non null bytes with len greater than 16
-			printf("Writing token 3\n");
-			buf |= ((0x03 << 16) + (len << 8) + b) << (cur_bit - 17);
-			cur_bit -= 18;
-		}
-
-		// dump to output
-		while(cur_bit <= 23) {
-			// TODO add endian check
-			tiny[count++] = ((BYTE*)&buf)[3];
-			//printf("Dumped %u to tiny!\n", tiny[count-1]);
-			buf = buf << 8;
-			cur_bit += 8;
-		}
-	}
-	
-	// do final dump NOTE: at this point cur_bit is guarantee to be within 7 bits of 31 so no need for a while also encode end if needed with 0x03
-	if(cur_bit != 31) {
-		// cur bit must be between 25-29
-		buf |= 0x03 << (cur_bit-25); // signal end
-		tiny[count++] = ((BYTE*)&buf)[3];
-	}
-
-	// set size in bytes
-	tiny[0] = count-1;
-	//printf("Packed Size: %u\n", tiny[0]);
-
-	return valid + 1;
-}*/
-
-
-/*void decode(BYTE* orginal, BYTE* delta_enc, BYTE* out) {
-
-	// get # of seqs in delta
-	unsigned seqs = (unsigned) delta_enc[0];
-	unsigned i, j;
-
-	unsigned len, count = 0;
-	BYTE b;
-	for(i = 0; i < seqs; i += 2) {
-		len = delta_enc[i+1];
-		b = delta_enc[i+2];
-
-		for(j = 0; j <= len; j++, count++)
-			out[count] = orginal[count] ^ b;
-	}
-
-}*/
