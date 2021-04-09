@@ -29,10 +29,6 @@ void zapi_free_page(BYTE* page) {
 	}
 }
 
-static unsigned compression_max_size(page_opts* p_opts) {
-	return LZ4_COMPRESSBOUND(p_opts->block_sz) * p_opts->blocks;
-}
-
 static void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* out) {
 	unsigned i, len, buf = 0, i_c = 1, o_c = 0, bytes_left;
 	unsigned consumed_cache, c_tmp = 0;
@@ -96,7 +92,7 @@ static int decompress_page_internal(zapi_page_header* h, BYTE* src, BYTE* dest, 
 
 	unsigned i, tmp, c_read = 0;
 	for(i = 0; i < blocks; i++) {
-		tmp = LZ4_decompress_safe_continue_unkown_size (stream, src + c_read, dest, p_opts->block_sz, 512);
+		tmp = LZ4_decompress_safe_continue_unkown_size (stream, (LZ4_BYTE*)src + c_read, (LZ4_BYTE*)dest, p_opts->block_sz, 512);
 		debug_printf("Decompressed %u/%u! First byte (raw): %c\n", start_index+i+1, p_opts->blocks, *dest);
 		c_read += tmp;
 		dest += p_opts->block_sz;
@@ -222,7 +218,7 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_op
 	BYTE delta_buf[DELTA_BUF_SIZE];
 	int d_size = delta_packed(src, scratch + p_opts->block_sz * unit, p_opts->block_sz, (BYTE*) &delta_buf, thres); //TODO ask about what the threshold should be
 
-	debug_printf("Delta size: %d + %u (in overhead)\n", d_size, sizeof(zapi_delta_block));
+	debug_printf("Delta size: %d + %zu (in overhead)\n", d_size, sizeof(zapi_delta_block));
 
 	if(!d_size) {
 		debug_printf("Delta failed!\n");
@@ -250,7 +246,7 @@ static unsigned compress_page(LZ4_stream_t* stream, BYTE* src, BYTE* dest, unsig
 	BYTE *c_src = src;   /* current data source */
 	BYTE *c_dest = dest; /* current compressed destination */
 	for(i = 0; i < p_opts->blocks; i++) {
-		const int c_bytes = LZ4_compress_fast_continue(lz4_s, c_src, c_dest, p_opts->block_sz, thres - (c_dest - dest), 1);
+		const int c_bytes = LZ4_compress_fast_continue(lz4_s, (LZ4_BYTE*)c_src, (LZ4_BYTE*)c_dest, p_opts->block_sz, thres - (c_dest - dest), 1);
 
 		// can't compress into thres size
 		if(c_bytes == 0) return 0;
@@ -278,7 +274,7 @@ unsigned zapi_update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_op
 
 	// prepare for recompression
 	LZ4_stream_t* lz4_s = LZ4_createStream();
-	LZ4_loadDict(lz4_s, scratch, (p_opts->block_sz * block));
+	LZ4_loadDict(lz4_s, (LZ4_BYTE*)scratch, (p_opts->block_sz * block));
 	memcpy(scratch + p_opts->block_sz * block, src, p_opts->block_sz);
 
 	// setup new page
@@ -311,8 +307,6 @@ unsigned zapi_update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_op
 }
 
 int zapi_decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {
-	unsigned i, result;
-
 	zapi_page_header* h = (zapi_page_header*) src;
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
 	
@@ -324,8 +318,6 @@ int zapi_decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned bloc
 }
 
 unsigned zapi_generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres) {
-	unsigned size;
-
 	// thres check
 	if(thres < (sizeof(zapi_page_header) + 1)) return 0;
 

@@ -2,6 +2,7 @@
 #define __ZAPI__H__
 
 typedef unsigned char BYTE;
+typedef char          LZ4_BYTE;
 
 struct delta;
 
