@@ -9,7 +9,7 @@
 
 #define DEBUG 1
 #define debug_printf(fmt, ...) \
-	do { if(DEBUG) { printf("DEBUG: "); printf(fmt, ##__VA_ARGS__);} } while(0)
+	do { if(DEBUG) printf("DEBUG: " fmt, ##__VA_ARGS__); } while(0)
 
 
 int zapi_page_size(BYTE* page) {
@@ -280,8 +280,6 @@ unsigned zapi_update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_op
 	// setup new page
 	zapi_page_header* new_h = (zapi_page_header*) recomp_page;
 	new_h->t_size = sizeof(zapi_page_header) + src_read;
-	//new_h->delta_head = NULL;
-	printf("Old src\n");
 	memcpy(recomp_page + sizeof(zapi_page_header), page + sizeof(zapi_page_header), src_read);
 
 	// TODO add in threshold for recompression to fail
