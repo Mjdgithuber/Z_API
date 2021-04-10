@@ -69,6 +69,6 @@ void zapi_free_page(BYTE* page);
  *           NOTE: scratch buffer must be at least as large as minimum_scratch_size() 
  */
 //unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres);
-unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned delta_thres, BYTE disable_prc, unsigned comp_thres, BYTE* prc_page);
+unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned delta_thres, BYTE disable_prc, unsigned comp_thres, BYTE* prc_page, unsigned* prc_size);
 
 #endif

@@ -72,7 +72,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 		printf("Changed %u bytes of block %u\n", bytes, blk);
 
 
-		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 1, 0, NULL);
+		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 1, 0, NULL, NULL);
 		//delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
 	
 		printf("Update block returned %d!\n", delta_failed);		
@@ -90,16 +90,17 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 
 	blk = 6;
 	bytes = 10;
+	unsigned sszz;
 	edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
 	last = zapi_page_size(start_page);
-	delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 0, 4000, new_page);
-	printf("Update block returned %d!\n", delta_failed);
+	delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 0, 4000, new_page, &sszz);
+	printf("Update block returned %d! w/ tight size of %u\n", delta_failed, sszz);
 	printf("Page size %u -> %u (%d changed)\n", last, zapi_page_size(new_page), zapi_page_size(new_page) - last);
 	cmp_page(new_page, edit_full, p_opts);
 
 
-	BYTE* tt_pg = malloc(zapi_page_size(new_page));
-	memcpy(tt_pg, new_page, zapi_page_size(new_page));
+	BYTE* tt_pg = malloc(sszz);
+	memcpy(tt_pg, new_page, sszz);
 	cmp_page(tt_pg, edit_full, p_opts);
 	free(tt_pg);
 
