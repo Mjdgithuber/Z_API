@@ -26,6 +26,7 @@ typedef struct {
 typedef struct {
 	short int block_sz; /* in bytes */
 	short int blocks;   /* number of blocks */
+	short int prc_thres;
 } page_opts;
 
 /*
@@ -67,6 +68,7 @@ void zapi_free_page(BYTE* page);
  *           also to be used to return a new compressed page when needed
  *           NOTE: scratch buffer must be at least as large as minimum_scratch_size() 
  */
-unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres);
+//unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres);
+unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned delta_thres, BYTE disable_prc, unsigned comp_thres, BYTE* prc_page);
 
 #endif

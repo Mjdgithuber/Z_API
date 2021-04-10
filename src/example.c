@@ -70,7 +70,11 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
 		last = zapi_page_size(start_page);
 		printf("Changed %u bytes of block %u\n", bytes, blk);
-		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
+
+
+		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 1, 0, NULL);
+		//delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
+
 		printf("Page size %u -> %u (%u changed)\n", last, zapi_page_size(start_page), zapi_page_size(start_page) - last);
 		if(delta_failed) printf("Need to allocate a new page\n");
 		cmp_page(start_page, edit_full, p_opts);
@@ -158,7 +162,7 @@ void run_delta_test(BYTE* page, BYTE* test_data, page_opts* p_opts, BYTE* dump_p
 	
 	BYTE* scratch = malloc(p_opts->blocks * p_opts->block_sz);
 	BYTE* recomp_page = malloc(10000);
-	int ss = zapi_update_block_recomp(edit_block, page, 4, p_opts, scratch, 10000, recomp_page);
+	int ss = 0;//zapi_update_block_recomp(edit_block, page, 4, p_opts, scratch, 10000, recomp_page);
 	//update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned thres, BYTE* recomp_page)
 	
 	printf("NEW SIZE: %u\n", ss);
