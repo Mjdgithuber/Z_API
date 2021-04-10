@@ -8,9 +8,6 @@
 #include "zapi.h"
 
 #define DEBUG_FLAG 1
-//#define debug_printf(level, fmt, ...) \
-//	do { if(DEBUG) printf(MG "DEBUG: " NM fmt, ##__VA_ARGS__); } while(0)
-
 #define DEBUG MG "DEBUG: "
 #define INFO CY "INFO: "
 #define debug_printf(level, fmt, ...) \
@@ -212,6 +209,30 @@ static void update_delta_llist(zapi_page_header* h, BYTE* src, unsigned size, un
 	(*next) = db;
 }
 
+static unsigned compress_page_internal(LZ4_stream_t* stream, BYTE* src, BYTE* dest, unsigned thres, zapi_page_header* h, page_opts* p_opts) {
+	unsigned i;
+
+	LZ4_stream_t* const lz4_s = stream ? stream : LZ4_createStream();
+
+	BYTE *c_src = src;   /* current data source */
+	BYTE *c_dest = dest; /* current compressed destination */
+	for(i = 0; i < p_opts->blocks; i++) {
+		const int c_bytes = LZ4_compress_fast_continue(lz4_s, (LZ4_BYTE*)c_src, (LZ4_BYTE*)c_dest, p_opts->block_sz, thres - (c_dest - dest), 1);
+
+		// can't compress into thres size
+		if(c_bytes == 0) {
+			debug_printf(DEBUG, "Failed to compress page into %u bytes!\n", thres);
+			return 0;
+		}
+
+		debug_printf(DEBUG, "Compressed unit %u/%u from %u -> %d! First byte (raw): %c\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes, *c_src);
+		c_src += p_opts->block_sz;
+		c_dest += c_bytes;
+	}
+	LZ4_freeStream(lz4_s);
+	return (h->t_size += (c_dest - dest));
+}
+
 #define DELTA_BUF_SIZE 3000 // could be much less, just for testing
 unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres) {
 	// decompress entire page (TODO do partial and delta check)
@@ -242,30 +263,6 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_op
 	LZ4_freeStreamDecode(lz4_sd);
 
 	return !d_size; // indicate delta failed
-}
-
-static unsigned compress_page_internal(LZ4_stream_t* stream, BYTE* src, BYTE* dest, unsigned thres, zapi_page_header* h, page_opts* p_opts) {
-	unsigned i;
-
-	LZ4_stream_t* const lz4_s = stream ? stream : LZ4_createStream();
-
-	BYTE *c_src = src;   /* current data source */
-	BYTE *c_dest = dest; /* current compressed destination */
-	for(i = 0; i < p_opts->blocks; i++) {
-		const int c_bytes = LZ4_compress_fast_continue(lz4_s, (LZ4_BYTE*)c_src, (LZ4_BYTE*)c_dest, p_opts->block_sz, thres - (c_dest - dest), 1);
-
-		// can't compress into thres size
-		if(c_bytes == 0) {
-			debug_printf(DEBUG, "Failed to compress page into %u bytes!\n", thres);
-			return 0;
-		}
-
-		debug_printf(DEBUG, "Compressed unit %u/%u from %u -> %d! First byte (raw): %c\n", i+1, p_opts->blocks, p_opts->block_sz, c_bytes, *c_src);
-		c_src += p_opts->block_sz;
-		c_dest += c_bytes;
-	}
-	LZ4_freeStream(lz4_s);
-	return (h->t_size += (c_dest - dest));
 }
 
 unsigned zapi_update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned thres, BYTE* recomp_page) {
@@ -326,8 +323,8 @@ int zapi_decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned bloc
 
 unsigned zapi_generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned thres) {
 	// thres check
-	if(thres < (sizeof(zapi_page_header) + 1)) {
-		debug_printf(DEBUG, "Theshold %u not large enough to store page header (%zu)!\n", thres, sizeof(zapi_page_header));
+	if(thres < sizeof(zapi_page_header)) {
+		debug_printf(DEBUG, "Threshold of %u bytes not large enough to store page header (%zu)!\n", thres, sizeof(zapi_page_header));
 		return 0;
 	}
 

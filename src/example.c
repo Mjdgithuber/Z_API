@@ -64,7 +64,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	// copy start into edit
 	memcpy(edit_full, start_data, p_opts->block_sz * p_opts->blocks);
 
-	for(i = 0; i < 2; i++) {
+	for(i = 0; i < 10; i++) {
 		blk = rand() % p_opts->blocks;
 		bytes = rand() % 12;
 		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
@@ -96,25 +96,31 @@ void run_tests() {
 		return;
 
 	// generate test page
-	unsigned p_size;
-	BYTE* scratch = malloc(size);
-	printf(YL "\nInit Compression Test:\n" NM);
-	p_size = zapi_generate_page(start_data, scratch, &p_opts, size);
+	unsigned p_size, thres = 1851;
+	BYTE* scratch = malloc(thres);
+	printf(YL "\nInit Compression Test with Threshold %u:\n" NM, thres);
+	p_size = zapi_generate_page(start_data, scratch, &p_opts, thres);
 
-	// copy into correct size buffer
-	BYTE* page = malloc(p_size);
-	memcpy(page, scratch, p_size);
-	printf("Generated page with compressed size of %u, REPORTED SIZE: %u\n", p_size, zapi_page_size(page));
-	printf("Compression ratio %.2f\n\n", (float)size/p_size);
+	if(p_size) {
+		// copy into correct size buffer
+		BYTE* page = malloc(p_size);
+		memcpy(page, scratch, p_size);
+		printf("Generated page with compressed size of %u, REPORTED SIZE: %u\n", p_size, zapi_page_size(page));
+		printf("Compression ratio %.2f\n\n", (float)size/p_size);
 
-	cmp_page(page, start_data, &p_opts);
+		cmp_page(page, start_data, &p_opts);
 
-	delta_battery(&p_opts, page, start_data);
+		delta_battery(&p_opts, page, start_data);
 
-	zapi_free_page(page);
+		zapi_free_page(page);
+		free(page);
+	} else {
+		printf("Failed to compress page into %u bytes!\n", thres);
+	}
+
+
 	free(scratch);
 	free(start_data);
-	free(page);
 
 	/*printf("Decompression Test:\nDecompressing page...\n");
 	BYTE* decomp_page = malloc(size);
