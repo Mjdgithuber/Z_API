@@ -367,7 +367,7 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_o
 	src_read = decompress_page_internal(h, page + sizeof(zapi_page_header), scratch, p_opts, lz4_sd, 0, block + 1, block, &sr_pre_block);
 
 	// check if delta should be performed
-	if(block < p_opts->prc_thres) {
+	if(block < p_opts->prc_thres || disable_prc) {
 		d_size = delta_packed(src, scratch + p_opts->block_sz * block, p_opts->block_sz, (BYTE*) &delta_buf, delta_thres);
 		if(d_size > 0)
 			update_delta_llist(h, (BYTE*) &delta_buf, d_size, block);

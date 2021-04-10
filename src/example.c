@@ -74,6 +74,8 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 
 		delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 1, 0, NULL);
 		//delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
+	
+		printf("Update block returned %d!\n", delta_failed);		
 
 		printf("Page size %u -> %u (%u changed)\n", last, zapi_page_size(start_page), zapi_page_size(start_page) - last);
 		if(delta_failed) printf("Need to allocate a new page\n");
