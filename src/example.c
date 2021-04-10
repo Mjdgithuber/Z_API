@@ -64,7 +64,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	// copy start into edit
 	memcpy(edit_full, start_data, p_opts->block_sz * p_opts->blocks);
 
-	for(i = 0; i < 10; i++) {
+	for(i = 0; i < 3; i++) {
 		blk = rand() % p_opts->blocks;
 		bytes = rand() % 12;
 		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
@@ -77,10 +77,41 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	
 		printf("Update block returned %d!\n", delta_failed);		
 
-		printf("Page size %u -> %u (%u changed)\n", last, zapi_page_size(start_page), zapi_page_size(start_page) - last);
+		printf("Page size %u -> %u (%d changed)\n", last, zapi_page_size(start_page), zapi_page_size(start_page) - last);
 		if(delta_failed) printf("Need to allocate a new page\n");
 		cmp_page(start_page, edit_full, p_opts);
 	}
+
+
+	printf("\n\n" YL "PRC Testing:\n" NM);
+	p_opts->prc_thres = 6;
+	
+	BYTE* new_page = malloc(4000);
+
+	blk = 6;
+	bytes = 10;
+	edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
+	last = zapi_page_size(start_page);
+	delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100, 0, 4000, new_page);
+	printf("Update block returned %d!\n", delta_failed);
+	printf("Page size %u -> %u (%d changed)\n", last, zapi_page_size(new_page), zapi_page_size(new_page) - last);
+	cmp_page(new_page, edit_full, p_opts);
+
+
+	BYTE* tt_pg = malloc(zapi_page_size(new_page));
+	memcpy(tt_pg, new_page, zapi_page_size(new_page));
+	cmp_page(tt_pg, edit_full, p_opts);
+	free(tt_pg);
+
+
+	/*if(!memcmp(edit_full, scratch, p_opts->blocks * p_opts->block_sz))
+		printf(GN "=== SUCCESS: Page and raw data match! ===\n" NM);
+	else
+		printf(RD "=== FAILURE: Page and raw data do not match! ===\n" NM);*/
+
+	free(new_page);
+
+
 
 	printf("\n");
 	

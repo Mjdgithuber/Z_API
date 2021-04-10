@@ -312,17 +312,22 @@ unsigned zapi_update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_op
 	return new_size;
 }*/
 
-void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) {
+static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) {
 	zapi_page_header* h = (zapi_page_header*) old_page;
 	zapi_page_header* new_h = (zapi_page_header*) new_page;
 
 	// free delta blocks w/ id >= free_blk_indx
-	zapi_delta_block** next = &(h->delta_head);
+	zapi_delta_block** next = &(h->delta_head), *tmp;
+
 	while(*next) {
 		if((*next)->id >= free_blk_indx) {
-			free(*next);
+			tmp = *next;
 			(*next) = (*next)->next;
-		} else next = &((*next)->next);
+			free(tmp);
+		} else {
+			new_h->t_size += *(((BYTE*)*next)+sizeof(zapi_delta_block)) + 1 + sizeof(zapi_delta_block);
+			next = &((*next)->next);
+		}
 	}
 
 	// move delta to new page
@@ -330,7 +335,7 @@ void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) {
 	h->delta_head = NULL;
 }
 
-unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk, BYTE* data, BYTE* prc_page, BYTE* old_page, unsigned cur_comp_sz, unsigned thres) {
+static unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk, BYTE* data, BYTE* prc_page, BYTE* old_page, unsigned cur_comp_sz, unsigned thres) {
 	unsigned new_size;
 
 	// prepare for recompression
@@ -344,8 +349,7 @@ unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk, BYTE* 
 
 	// perform compression
 	page_opts n_opts = { .block_sz = p_opts->block_sz, .blocks = p_opts->blocks - prc_after_blk };
-	new_size = compress_page_internal(lz4_s, data + p_opts->block_sz * prc_after_blk, prc_page + sizeof(zapi_page_header) + cur_comp_sz, thres - sizeof(zapi_page_header), new_h, &n_opts);
-	LZ4_freeStream(lz4_s);
+	new_size = compress_page_internal(lz4_s, data + p_opts->block_sz * prc_after_blk, prc_page + sizeof(zapi_page_header) + cur_comp_sz, thres - sizeof(zapi_page_header) - cur_comp_sz, new_h, &n_opts);
 
 	// move old delta to new page
 	if(new_size > 0)
@@ -376,6 +380,7 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_o
 
 		// no need to perform further decompression
 		if(d_size != 0) {
+			debug_printf(DEBUG, "Delta size: %d + %zu (in overhead)\n", d_size, sizeof(zapi_delta_block));
 			LZ4_freeStreamDecode(lz4_sd);
 			return d_size == -1;
 		}
