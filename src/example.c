@@ -64,7 +64,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	// copy start into edit
 	memcpy(edit_full, start_data, p_opts->block_sz * p_opts->blocks);
 
-	for(i = 0; i < 3; i++) {
+	for(i = 0; i < 4; i++) {
 		blk = rand() % p_opts->blocks;
 		bytes = rand() % 12;
 		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
@@ -82,8 +82,70 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 		cmp_page(start_page, edit_full, p_opts);
 	}
 
+	BYTE* del_page = malloc(4000);
+	int start = 0, total = 8;
+	int del_size = zapi_delete_block(start_page, p_opts, del_page, scratch, start, total, 4000);
+	printf(YL "\n\nDelete page size: %u!\n" NM, del_size);
+	
+	memset(edit_full + start * p_opts->block_sz, 0, total * p_opts->block_sz);
+	cmp_page(del_page, edit_full, p_opts);
 
-	printf("\n\n" YL "PRC Testing:\n" NM);
+	zapi_free_page(del_page);
+	free(del_page);
+
+
+
+	/*BYTE* old_page = start_page;
+	BYTE* new_page = malloc(3000);
+	unsigned new_size;
+	p_opts->prc_thres = 0;
+	for(i = 0; i < 10; i++) {
+		blk = rand() % p_opts->blocks;
+		bytes = rand() % 12;
+		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
+		last = zapi_page_size(old_page);
+		printf("Changed %u bytes of block %u\n", bytes, blk);
+
+		
+		delta_failed = zapi_update_block(edit_par, old_page, blk, p_opts, scratch, 100, 0, 3000, new_page, &new_size);
+		if(delta_failed != 2) {
+			printf(RD "PRC FAILURE!\n" NM);
+			return;
+		}
+		if(last != zapi_page_size(old_page)) {
+			printf(RD "PRC FAILURE changed old page!\n" NM);
+			return;
+		}
+
+		// copy page into tight buffer
+		free(old_page);
+		old_page = malloc(new_size);
+		memcpy(old_page, new_page, new_size);
+
+		//delta_failed = zapi_update_block(edit_par, start_page, blk, p_opts, scratch, 100);
+	
+		printf("Update block returned %d!\n", delta_failed);		
+
+		printf("Page size %u -> %u (%d changed)\n", last, zapi_page_size(old_page), zapi_page_size(old_page) - last);
+		if(delta_failed) printf("Need to allocate a new page\n");
+		cmp_page(old_page, edit_full, p_opts);
+	}
+
+	printf("\n\n" YL "FINAL PRC SIZE %u, FINAL RECOMP SIZE %d!\n" NM, zapi_page_size(old_page), zapi_generate_page(edit_full, scratch, p_opts, uc_size));
+
+
+	free(old_page);
+	free(new_page);*/
+
+
+
+
+
+
+
+
+
+	/*printf("\n\n" YL "PRC Testing:\n" NM);
 	p_opts->prc_thres = 6;
 	
 	BYTE* new_page = malloc(4000);
@@ -102,7 +164,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	BYTE* tt_pg = malloc(sszz);
 	memcpy(tt_pg, new_page, sszz);
 	cmp_page(tt_pg, edit_full, p_opts);
-	free(tt_pg);
+	free(tt_pg);*/
 
 
 	/*if(!memcmp(edit_full, scratch, p_opts->blocks * p_opts->block_sz))
@@ -110,7 +172,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	else
 		printf(RD "=== FAILURE: Page and raw data do not match! ===\n" NM);*/
 
-	free(new_page);
+	//free(new_page);
 
 
 
