@@ -291,8 +291,9 @@ unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* new_page, BYTE* 
 	// decompress page
 	zapi_page_header* h = (zapi_page_header*) page;
 	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	decompress_page_internal(h, page + sizeof(zapi_page_header), scratch, p_opts, lz4_sd, 0, start_block + 1, start_block, &sr_pre_block); // TODO don't need to decompress if connected to last block
+	decompress_page_internal(h, page + sizeof(zapi_page_header), scratch, p_opts, lz4_sd, 0, p_opts->blocks, start_block, &sr_pre_block); // TODO don't need to decompress if connected to last block
 	apply_delta(h, scratch, p_opts, 0, p_opts->blocks);
+	LZ4_freeStreamDecode(lz4_sd);
 
 	// delete the data
 	memset(scratch + start_block * p_opts->block_sz, 0, del_blocks * p_opts->block_sz);
