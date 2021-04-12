@@ -14,6 +14,9 @@
 	do { if(DEBUG_FLAG) printf(level NM fmt, ##__VA_ARGS__); } while(0)
 
 
+// Internal buffer to store delta before allocation
+#define DELTA_BUF_SIZE 3000
+
 int zapi_page_size(BYTE* page) {
 	return ((zapi_page_header*) page)->t_size;
 }
@@ -235,83 +238,6 @@ static unsigned compress_page_internal(LZ4_stream_t* stream, BYTE* src, BYTE* de
 	return (h->t_size += (c_dest - dest));
 }
 
-#define DELTA_BUF_SIZE 3000 // could be much less, just for testing
-/*unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned unit, page_opts* p_opts, BYTE* scratch, unsigned thres) {
-	// decompress entire page (TODO do partial and delta check)
-	zapi_page_header* h = (zapi_page_header*) page;
-
-	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	int src_read = decompress_page_internal(h, page + sizeof(zapi_page_header), scratch, p_opts, lz4_sd, 0, unit + 1);
-
-	// generate delta block
-	BYTE delta_buf[DELTA_BUF_SIZE];
-	int d_size = delta_packed(src, scratch + p_opts->block_sz * unit, p_opts->block_sz, (BYTE*) &delta_buf, thres); //TODO ask about what the threshold should be
-
-	debug_printf(DEBUG, "Delta size: %d + %zu (in overhead)\n", d_size, sizeof(zapi_delta_block));
-
-	if(!d_size) {
-		debug_printf(DEBUG, "Delta failed!\n");
-		// copy change to scratch and decompress the rest of the page
-		memcpy(scratch + p_opts->block_sz * unit, src, p_opts->block_sz);
-		decompress_page_internal(h, page + sizeof(zapi_page_header) + src_read, scratch + p_opts->block_sz * (unit + 1), p_opts, lz4_sd, unit+1, p_opts->blocks - (unit+1));
-		apply_delta(h, scratch, p_opts, 0, p_opts->blocks);
-	} else if(d_size == -1) {
-		debug_printf(DEBUG, "Nothing to change!\n");
-	} else {
-		debug_printf(DEBUG, "Delta succeeded!\n");
-		update_delta_llist(h, (BYTE*) &delta_buf, d_size, unit);
-	}
-
-	LZ4_freeStreamDecode(lz4_sd);
-
-	return !d_size; // indicate delta failed
-}
-
-unsigned zapi_update_block_recomp(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned thres, BYTE* recomp_page) {
-	int src_read;
-	unsigned new_size;
-
-	// decompress up to block to be updated
-	zapi_page_header* h = (zapi_page_header*) page;
-	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	src_read = decompress_page_internal(h, page + sizeof(zapi_page_header), scratch, p_opts, lz4_sd, 0, block); // TODO edit dpi to return src_read to a block
-
-	// decompress the rest of the page and apply delta
-	decompress_page_internal(h, page + sizeof(zapi_page_header) + src_read, scratch + p_opts->block_sz * block, p_opts, lz4_sd, block, p_opts->blocks - block);
-	apply_delta(h, scratch + p_opts->block_sz * block, p_opts, block, p_opts->blocks); // TODO exclude blocks to be updated
-
-	// prepare for recompression
-	LZ4_stream_t* lz4_s = LZ4_createStream();
-	LZ4_loadDict(lz4_s, (LZ4_BYTE*)scratch, (p_opts->block_sz * block));
-	memcpy(scratch + p_opts->block_sz * block, src, p_opts->block_sz);
-
-	// setup new page
-	zapi_page_header* new_h = (zapi_page_header*) recomp_page;
-	new_h->t_size = sizeof(zapi_page_header) + src_read;
-	memcpy(recomp_page + sizeof(zapi_page_header), page + sizeof(zapi_page_header), src_read);
-
-	// TODO add in threshold for recompression to fail
-	page_opts n_opts = { .block_sz = p_opts->block_sz, .blocks = p_opts->blocks - block };
-	new_size = compress_page_internal(lz4_s, scratch + p_opts->block_sz * block, recomp_page + sizeof(zapi_page_header) + src_read, 10000, new_h, &n_opts);
-
-	// if compression failed to meet thres apply remaining deltas
-	if(new_size == 0)
-		apply_delta(h, scratch, p_opts, 0, block);
-	else {
-		// free delta blocks that aren't needed then move to new header
-		zapi_delta_block** next = &(h->delta_head);
-		while(*next) {
-			if((*next)->id >= block) {
-				free(*next);
-				(*next) = (*next)->next;
-			} else next = &((*next)->next);
-		}
-		new_h->delta_head = h->delta_head;
-		h->delta_head = NULL;
-	}
-	return new_size;
-}*/
-
 static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) {
 	zapi_page_header* h = (zapi_page_header*) old_page;
 	zapi_page_header* new_h = (zapi_page_header*) new_page;
@@ -323,7 +249,7 @@ static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) 
 		if((*next)->id >= free_blk_indx) {
 			tmp = *next;
 			(*next) = (*next)->next;
-			free(tmp); debug_printf(INFO, "Freeded delta block %u\n", tmp->id);
+			free(tmp); debug_printf(INFO, "Freed delta block %u\n", tmp->id);
 		} else {
 			new_h->t_size += *(((BYTE*)*next)+sizeof(zapi_delta_block)) + 1 + sizeof(zapi_delta_block);
 			next = &((*next)->next);
