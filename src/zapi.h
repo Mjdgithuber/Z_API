@@ -8,6 +8,7 @@
 #define YL  "\x1B[33m"
 #define BL  "\x1B[34m"
 #define CY  "\x1B[36m"
+#define WHB "\x1B[47m"
 
 typedef unsigned char BYTE;
 typedef char          LZ4_BYTE;

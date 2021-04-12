@@ -11,13 +11,12 @@
 #define DEBUG MG "DEBUG: "
 #define INFO CY "INFO: "
 #define ERROR RD "ERROR: "
-#define MEM BL "MEMORY: "
+#define MEM BL WHB "MEMORY:" NM " "
 #define debug_printf(level, fmt, ...) \
 	do { if(DEBUG_FLAG) printf(level NM fmt, ##__VA_ARGS__); } while(0)
 
 // Internal buffer to store delta before allocation
 #define DELTA_BUF_SIZE 3000
-
 
 #if DEBUG_FLAG
 
@@ -43,8 +42,8 @@ static void* debug_malloc(size_t bytes, unsigned line_alloc) {
 		tmp = mem_pool_arr;
 		mem_pool_cap *= 2;
 		debug_printf(MEM, "Expanding mem pool table to %u\n", mem_pool_cap);
-		mem_pool_arr = calloc(mem_pool_cap, 1);
-		memcpy(mem_pool_arr, tmp, mem_pool_size);
+		mem_pool_arr = calloc(mem_pool_cap * sizeof(mem_info_s), 1);
+		memcpy(mem_pool_arr, tmp, mem_pool_size * sizeof(mem_info_s));
 		free(tmp);
 	}
 
@@ -65,6 +64,9 @@ static void* debug_malloc(size_t bytes, unsigned line_alloc) {
 static void debug_free(void* ptr, unsigned line_free) {
 	unsigned i;
 
+	if(ptr == NULL)
+		return;
+
 	// locate pointer in table
 	for(i = 0; i < mem_pool_cap; i++) {
 		// clear the table entry
@@ -83,10 +85,10 @@ void memory_management_stats() {
 	unsigned i;
 	BYTE empty = 1;
 
-	if(mem_pool_arr != NULL)
+	if(mem_pool_arr == NULL)
 		return;
 
-	debug_printf(MEM, " == Allocations in table ==\n");
+	debug_printf(MEM, "== Allocations in table ==\n");
 	for(i = 0; i < mem_pool_cap; i++) {
 		if(mem_pool_arr[i].ptr != NULL) {
 			empty = 0;
@@ -96,12 +98,16 @@ void memory_management_stats() {
 
 	if(empty)
 		debug_printf(MEM, "No allocation in pool\n");
+	free(mem_pool_arr);
+	mem_pool_arr = NULL;
 }
 
 #else
 
 #define MALLOC_MM(bytes) malloc(bytes)
 #define FREE_MM(ptr) free(ptr)
+
+void memory_management_stats() {}
 
 #endif
 
@@ -118,7 +124,7 @@ void zapi_free_page(BYTE* page) {
 	while(db) {
 		debug_printf(DEBUG, "Freeing delta block with id %u\n", db->id);
 		tmp = db->next;
-		free(db);
+		FREE_MM(db);
 		db = tmp;
 	}
 }
@@ -284,7 +290,7 @@ static unsigned delta_packed(BYTE* b0, BYTE* b1, int ib_size, BYTE* b_out, int m
 }
 
 static void update_delta_llist(zapi_page_header* h, BYTE* src, unsigned size, unsigned id) {
-	zapi_delta_block* db = malloc(sizeof(zapi_delta_block) + size);
+	zapi_delta_block* db = MALLOC_MM(sizeof(zapi_delta_block) + size);
 
 	// load delta block
 	memcpy((BYTE*)db + sizeof(zapi_delta_block), src, size);
@@ -299,7 +305,7 @@ static void update_delta_llist(zapi_page_header* h, BYTE* src, unsigned size, un
 	// update total size and free old delta if applicable
 	h->t_size += size - ((*next) ? *(((BYTE*)*next)+sizeof(zapi_delta_block)) + 1 : sizeof(zapi_delta_block) * -1);
 	debug_printf(DEBUG, "%s %u\n", (*next) ? "Freed older delta block and generated new delta block for id " : "generated new delta block for id ", id);
-	free(*next);
+	FREE_MM(*next);
 	(*next) = db;
 }
 
@@ -338,7 +344,7 @@ static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) 
 		if((*next)->id >= free_blk_indx) {
 			tmp = *next;
 			(*next) = (*next)->next;
-			free(tmp); debug_printf(INFO, "Freed delta block %u\n", tmp->id);
+			FREE_MM(tmp); debug_printf(INFO, "Freed delta block %u\n", tmp->id);
 		} else {
 			new_h->t_size += *(((BYTE*)*next)+sizeof(zapi_delta_block)) + 1 + sizeof(zapi_delta_block);
 			next = &((*next)->next);
