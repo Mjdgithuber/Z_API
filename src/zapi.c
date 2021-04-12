@@ -7,7 +7,7 @@
 #include "lz4.h"
 #include "zapi.h"
 
-#define DEBUG_FLAG 1
+#define DEBUG_FLAG 0
 #define DEBUG MG "DEBUG: "
 #define INFO CY "INFO: "
 #define ERROR RD "ERROR: "
@@ -322,6 +322,7 @@ static unsigned compress_page_internal(LZ4_stream_t* stream, BYTE* src, BYTE* de
 		// can't compress into thres size
 		if(c_bytes == 0) {
 			debug_printf(DEBUG, "Failed to compress page into %u bytes!\n", thres);
+			LZ4_freeStream(lz4_s);
 			return 0;
 		}
 
