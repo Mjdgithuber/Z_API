@@ -73,4 +73,6 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_o
 
 unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* new_page, BYTE* scratch, unsigned start_block, unsigned del_blocks, unsigned thres);
 
+int zapi_pack_page(BYTE* page, page_opts* p_opts, BYTE* scratch, BYTE* new_page, unsigned thres, BYTE force_recompression);
+
 #endif

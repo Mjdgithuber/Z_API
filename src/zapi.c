@@ -376,3 +376,15 @@ unsigned zapi_generate_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned t
 
 	return compress_page_internal(NULL, src, dest + sizeof(zapi_page_header), thres - sizeof(zapi_page_header), h, p_opts);
 }
+
+int zapi_pack_page(BYTE* page, page_opts* p_opts, BYTE* scratch, BYTE* new_page, unsigned thres, BYTE force_recompression) {
+	zapi_page_header* h = (zapi_page_header*) page;
+
+	// assume no delta means its already fully compressed
+	if(!h->delta_head && !force_recompression)
+		return -1;
+
+	// decompress and generate new page
+	zapi_decompress_page(page, scratch, p_opts, p_opts->blocks);
+	return zapi_generate_page(scratch, new_page, p_opts, thres);
+}

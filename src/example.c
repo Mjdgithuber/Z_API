@@ -64,7 +64,8 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	// copy start into edit
 	memcpy(edit_full, start_data, p_opts->block_sz * p_opts->blocks);
 
-	for(i = 0; i < 4; i++) {
+	// deltas
+	/*for(i = 0; i < 4; i++) {
 		blk = rand() % p_opts->blocks;
 		bytes = rand() % 12;
 		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
@@ -91,11 +92,11 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	cmp_page(del_page, edit_full, p_opts);
 
 	zapi_free_page(del_page);
-	free(del_page);
+	free(del_page);*/
 
 
 
-	/*BYTE* old_page = start_page;
+	BYTE* old_page = start_page;
 	BYTE* new_page = malloc(3000);
 	unsigned new_size;
 	p_opts->prc_thres = 0;
@@ -131,11 +132,13 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 		cmp_page(old_page, edit_full, p_opts);
 	}
 
-	printf("\n\n" YL "FINAL PRC SIZE %u, FINAL RECOMP SIZE %d!\n" NM, zapi_page_size(old_page), zapi_generate_page(edit_full, scratch, p_opts, uc_size));
-
+	// many leaks but fine for testing
+	BYTE* blah_page = malloc(4000);
+	printf("\n\n" YL "FINAL PRC SIZE %u, FINAL RECOMP SIZE %d! FINAL ZAPI RECOMP %d!\n" NM, 
+		zapi_page_size(old_page), zapi_generate_page(edit_full, scratch, p_opts, uc_size), zapi_pack_page(old_page, p_opts, scratch, blah_page, 4000, 1));
 
 	free(old_page);
-	free(new_page);*/
+	free(new_page);
 
 
 
