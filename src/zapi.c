@@ -261,7 +261,7 @@ static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) 
 	h->delta_head = NULL;
 }
 
-static unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk, BYTE* data, BYTE* prc_page, BYTE* old_page, unsigned cur_comp_sz, unsigned thres, unsigned* pg_size) {
+static unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk, BYTE* data, BYTE* prc_page, BYTE* old_page, unsigned cur_comp_sz, unsigned thres) {
 	unsigned new_size;
 
 	// prepare for recompression
@@ -277,17 +277,15 @@ static unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk,
 	page_opts n_opts = { .block_sz = p_opts->block_sz, .blocks = p_opts->blocks - prc_after_blk };
 	new_size = compress_page_internal(lz4_s, data + p_opts->block_sz * prc_after_blk, prc_page + sizeof(zapi_page_header) + cur_comp_sz, thres - sizeof(zapi_page_header) - cur_comp_sz, new_h, &n_opts);
 
-	// move old delta to new page
-	*pg_size = zapi_page_size(prc_page);
+	// move old delta to new page if needed
 	if(new_size > 0)
 		move_deltas(old_page, prc_page, prc_after_blk);
-	debug_printf(INFO, "Attempted PRC on block %u onwards, PRC size = %u!\n", prc_after_blk, new_size);
+	debug_printf(INFO, "Attempted PRC on block %u onwards, PRC Page size = %u, FULL size = %u!\n", prc_after_blk, new_size, zapi_page_size(prc_page));
 
 	return new_size;
 }
 
 unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* new_page, BYTE* scratch, unsigned start_block, unsigned del_blocks, unsigned thres) {
-	unsigned pg_size;
 	int sr_pre_block, i;
 
 	// decompress page
@@ -300,16 +298,13 @@ unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* new_page, BYTE* 
 	memset(scratch + start_block * p_opts->block_sz, 0, del_blocks * p_opts->block_sz);
 
 	// prc
-	partial_recompression(p_opts, start_block, scratch, new_page, page, sr_pre_block, thres, &pg_size);
-
-	return pg_size;
+	return partial_recompression(p_opts, start_block, scratch, new_page, page, sr_pre_block, thres);
 }
 
 // 0 - delta enc worked, 1 - no change was made, 2 - prc succeeded, 3 - decompressed data in scratch is valid
 unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned delta_thres, BYTE disable_prc, unsigned comp_thres, BYTE* prc_page, unsigned* prc_size) {
 	// stack based allocation for delta probing
 	BYTE delta_buf[DELTA_BUF_SIZE];
-	unsigned prc_ret = 0;
 	int src_read, sr_pre_block, d_size = -1;
 
 	// decompress up to block to be updated
@@ -343,12 +338,12 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_o
 	memcpy(scratch + p_opts->block_sz * block, src, p_opts->block_sz);
 
 	if(!disable_prc)
-		prc_ret = partial_recompression(p_opts, block, scratch, prc_page, page, sr_pre_block, comp_thres, prc_size);
+		*prc_size = partial_recompression(p_opts, block, scratch, prc_page, page, sr_pre_block, comp_thres);
 	
-	if(prc_ret <= 0)
+	if(disable_prc || *prc_size <= 0)
 		apply_delta(h, scratch, p_opts, 0, block);
 
-	return (!prc_ret) + 2;
+	return !(!disable_prc ? *prc_size : 0) + 2;
 }
 
 int zapi_decompress_page(BYTE* src, BYTE* dest, page_opts* p_opts, unsigned blocks) {
