@@ -6,6 +6,7 @@
 #define GN  "\x1B[32m"
 #define MG  "\x1B[35m"
 #define YL  "\x1B[33m"
+#define BL  "\x1B[34m"
 #define CY  "\x1B[36m"
 
 typedef unsigned char BYTE;

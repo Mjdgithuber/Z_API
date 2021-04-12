@@ -10,12 +10,101 @@
 #define DEBUG_FLAG 1
 #define DEBUG MG "DEBUG: "
 #define INFO CY "INFO: "
+#define ERROR RD "ERROR: "
+#define MEM BL "MEMORY: "
 #define debug_printf(level, fmt, ...) \
 	do { if(DEBUG_FLAG) printf(level NM fmt, ##__VA_ARGS__); } while(0)
 
-
 // Internal buffer to store delta before allocation
 #define DELTA_BUF_SIZE 3000
+
+
+#if DEBUG_FLAG
+
+#define MALLOC_MM(bytes) debug_malloc(bytes, __LINE__)
+#define FREE_MM(ptr) debug_free(ptr, __LINE__)
+
+typedef struct {
+	void* ptr;
+	int line_alloc;
+} mem_info_s;
+
+unsigned mem_pool_size = 0;
+unsigned mem_pool_cap = 1;
+mem_info_s* mem_pool_arr = NULL;
+static void* debug_malloc(size_t bytes, unsigned line_alloc) {
+	void* ret;
+	mem_info_s* tmp;
+	unsigned i;
+
+	debug_printf(MEM, "Allocating %u bytes on line %u!\n", bytes, line_alloc);
+
+	if(mem_pool_size >= mem_pool_cap || mem_pool_arr == NULL) {
+		tmp = mem_pool_arr;
+		mem_pool_cap *= 2;
+		debug_printf(MEM, "Expanding mem pool table to %u\n", mem_pool_cap);
+		mem_pool_arr = calloc(mem_pool_cap, 1);
+		memcpy(mem_pool_arr, tmp, mem_pool_size);
+		free(tmp);
+	}
+
+	// locate a free entry
+	for(i = 0; i < mem_pool_cap; i++) {
+		if(mem_pool_arr[i].ptr == NULL) {
+			tmp = malloc(bytes);
+			mem_pool_arr[i].ptr = tmp;
+			mem_pool_arr[i].line_alloc = line_alloc;
+			++mem_pool_size;
+			return tmp;
+		}
+	}
+
+	debug_printf(ERROR, "Failed to allocate memory on line %u\n", line_alloc);
+}
+
+static void debug_free(void* ptr, unsigned line_free) {
+	unsigned i;
+
+	// locate pointer in table
+	for(i = 0; i < mem_pool_cap; i++) {
+		// clear the table entry
+		if(mem_pool_arr[i].ptr == ptr) {
+			mem_pool_arr[i].ptr = NULL;
+			mem_pool_arr[i].line_alloc = 0;
+			--mem_pool_size;
+			return;
+		}
+	}
+
+	debug_printf(ERROR, "Attempted to free memory on line %u that wasn't allocated in mem pool!\n", line_free);
+}
+
+void memory_management_stats() {
+	unsigned i;
+	BYTE empty = 1;
+
+	if(mem_pool_arr != NULL)
+		return;
+
+	debug_printf(MEM, " == Allocations in table ==\n");
+	for(i = 0; i < mem_pool_cap; i++) {
+		if(mem_pool_arr[i].ptr != NULL) {
+			empty = 0;
+			debug_printf(MEM, "%p -> Allocated on line %u\n", mem_pool_arr[i].ptr, mem_pool_arr[i].line_alloc);
+		}
+	}
+
+	if(empty)
+		debug_printf(MEM, "No allocation in pool\n");
+}
+
+#else
+
+#define MALLOC_MM(bytes) malloc(bytes)
+#define FREE_MM(ptr) free(ptr)
+
+#endif
+
 
 int zapi_page_size(BYTE* page) {
 	return ((zapi_page_header*) page)->t_size;
