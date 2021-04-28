@@ -171,6 +171,22 @@ static void decode_packed(BYTE* orginal, int orgi_size, BYTE* delta_enc, BYTE* o
 	}
 }
 
+void zapi_apply_delta(BYTE* zapi_page, page_opts* p_opts, BYTE* original, BYTE* ret, unsigned block_id) {
+	zapi_delta_block* dp = ((zapi_page_header*)zapi_page)->delta_head;
+	while(dp) {
+		// check for match
+		if(dp->id == block_id) {
+			debug_printf(DEBUG, "Applying delta given original block #%u!\n", dp->id);
+			decode_packed(original, p_opts->block_sz, (BYTE*)dp + sizeof(zapi_delta_block), ret);
+			return;
+		}
+		dp = dp->next;
+	}
+
+	// no delta found
+	memcpy(ret, original, p_opts->block_sz);
+}
+
 static void apply_delta(zapi_page_header* h, BYTE* data, page_opts* p_opts, unsigned start, unsigned blocks) {
 	BYTE* addr;
 	unsigned tmp;

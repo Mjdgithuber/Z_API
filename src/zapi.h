@@ -146,4 +146,18 @@ unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* new_page, BYTE* 
  */
 int zapi_pack_page(BYTE* page, page_opts* p_opts, BYTE* scratch, BYTE* new_page, unsigned thres, BYTE force_recompression);
 
+/*
+ * Given a compressed page 'zapi_page' and an orignal block 'original' this will
+ * check if there is an existing delta encoding for with 'block_id' stored within
+ * the page.  This will avoid having to decompress the page before applying the
+ * delta.  If no delta is found then original will be copied to ret.
+ *
+ * 'zapi_page' the compressed page with the delta linked list to check against
+ * 'p_opts' page options (only uses block_sz)
+ * 'original' the original block to avoid decompression
+ * 'ret' a return buffer to store the data with the delta applied to it
+ * 'block_id' block id of the original block
+ */
+void zapi_apply_delta(BYTE* zapi_page, page_opts* p_opts, BYTE* original, BYTE* ret, unsigned block_id);
+
 #endif
