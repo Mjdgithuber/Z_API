@@ -2221,7 +2221,7 @@ int LZ4_decompress_safe_unkown_size(const char* src, char* dst, int uncompressed
     int compressedSize = LZ4_COMPRESSBOUND(uncompressedSize);
     dstCapacity = MIN(uncompressedSize, dstCapacity);
     return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
-                                  endOnInputSize, partial_decode,
+                                  endOnOutputSize, decode_full_block,
                                   noDict, returnInputConsumed, (BYTE*)dst, NULL, 0);
 }
 
@@ -2232,7 +2232,7 @@ int LZ4_decompress_safe_withPrefix64k_unkown_size(const char* src, char* dst, in
     int compressedSize = LZ4_COMPRESSBOUND(uncompressedSize);
     dstCapacity = MIN(uncompressedSize, dstCapacity);
     return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
-                                  endOnInputSize, partial_decode, withPrefix64k,
+                                  endOnOutputSize, decode_full_block, withPrefix64k,
                                   returnInputConsumed, (BYTE*)dst - 64 KB, NULL, 0);
 }
 
@@ -2243,7 +2243,7 @@ static int LZ4_decompress_safe_withSmallPrefix_unkown_size(const char* src, char
     int compressedSize = LZ4_COMPRESSBOUND(uncompressedSize);
     dstCapacity = MIN(uncompressedSize, dstCapacity);
     return LZ4_decompress_generic(src, dst, compressedSize, dstCapacity,
-                                  endOnInputSize, partial_decode, noDict,
+                                  endOnOutputSize, decode_full_block, noDict,
                                   returnInputConsumed, (BYTE*)dst-prefixSize, NULL, 0);
 }
 
