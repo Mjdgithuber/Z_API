@@ -65,7 +65,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	memcpy(edit_full, start_data, p_opts->block_sz * p_opts->blocks);
 
 	// deltas
-	/*for(i = 0; i < 4; i++) {
+	for(i = 0; i < 4; i++) {
 		blk = rand() % p_opts->blocks;
 		bytes = rand() % 12;
 		edit_par = generate_random_edit(edit_full, p_opts, blk, bytes);
@@ -83,8 +83,10 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 		cmp_page(start_page, edit_full, p_opts);
 	}
 
+
+	memset(scratch, 0, uc_size);
 	BYTE* del_page = malloc(4000);
-	int start = 0, total = 8;
+	int start = 4, total = 2;
 	int del_size = zapi_delete_block(start_page, p_opts, del_page, scratch, start, total, 4000);
 	printf(YL "\n\nDelete page size: %u!\n" NM, del_size);
 	
@@ -92,11 +94,11 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 	cmp_page(del_page, edit_full, p_opts);
 
 	zapi_free_page(del_page);
-	free(del_page);*/
+	free(del_page);
 
 
 
-	BYTE* old_page = start_page;
+	/*BYTE* old_page = start_page;
 	BYTE* new_page = malloc(3000);
 	unsigned new_size;
 	p_opts->prc_thres = 0;
@@ -138,7 +140,7 @@ void delta_battery(page_opts* p_opts, BYTE* start_page, BYTE* start_data) {
 		zapi_page_size(old_page), zapi_generate_page(edit_full, scratch, p_opts, uc_size), zapi_pack_page(old_page, p_opts, scratch, blah_page, 4000, 1));
 
 	free(old_page);
-	free(new_page);
+	free(new_page);*/
 
 
 
@@ -217,6 +219,8 @@ void run_tests() {
 
 		zapi_free_page(page);
 		free(page);
+
+		memory_management_stats();
 	} else {
 		printf("Failed to compress page into %u bytes!\n", thres);
 	}

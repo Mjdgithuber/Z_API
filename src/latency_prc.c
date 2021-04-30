@@ -130,7 +130,9 @@ void latency_compression(const char* file, page_opts* p_opts, unsigned blk, unsi
 	} else {
 		for(i = 0; i < times; i++) {
 			zapi_decompress_page(page, prc_page, p_opts, p_opts->blocks);
-			zapi_generate_page(file_data, scratch, p_opts, thres);
+			//zapi_generate_page(file_data, scratch, p_opts, thres);
+			
+
 			//printf("New size %u!\n", zapi_generate_page(file_data, scratch, p_opts, thres));
 		}
 	}
@@ -146,16 +148,22 @@ int main(int argc, char** argv) {
 	int block, runs, prc;
 
 	page_opts p_opts;
-	p_opts.block_sz = 256;
+	p_opts.block_sz = 512;
 	p_opts.blocks = 8;
 
 	block = atoi(argv[2]);
 	runs = atoi(argv[3]);
 	prc = atoi(argv[4]);
 
-	latency_compression(argv[1], &p_opts, block, runs, prc);	
+	latency_compression(argv[1], &p_opts, block, runs, prc);
 
-	//print_compression("2019_oct.core", &p_opts, 12);
+
+	/*page_opts p_opts;
+	p_opts.block_sz = 512;
+	p_opts.blocks = 8;
+	print_compression("2019_oct.core", &p_opts, 12);*/
+
+
 	//print_compression("data/cr4-5.raw", &p_opts, 12);
 	//latency_compression("data/cr4-5.raw", &p_opts, 6, 10000000, 0);
 	//latency_compression("test_compress.txt", &p_opts, 6, 10000000, 1);
