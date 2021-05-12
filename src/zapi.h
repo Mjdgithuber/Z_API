@@ -106,7 +106,7 @@ void zapi_free_page(BYTE* page);
  *
  * @ return the operation that was perfomed as indicated in the list above
  */
-unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* scratch, unsigned delta_thres, BYTE disable_prc, unsigned comp_thres, BYTE* prc_page, unsigned* prc_size);
+unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_opts, BYTE* decompression_buffer, unsigned delta_thres);
 
 /*
  * Sets a continuous number of blocks from 'start_block' to 'start_block + del_blocks'
@@ -124,7 +124,7 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_o
  * 
  * NOTE: scratch will always contain the decompressed page with the specified blocks cleared
  */
-unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* new_page, BYTE* scratch, unsigned start_block, unsigned del_blocks, unsigned thres);
+unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* decompression_buffer, unsigned start_block, unsigned del_blocks);
 
 /*
  * Will likely be renamed in the future.
