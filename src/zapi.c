@@ -122,7 +122,7 @@ void zapi_free_page(BYTE* page) {
 
 	// free delta linked list
 	while(db) {
-		debug_printf(DEBUG, "Freeing delta block with id %u\n", db->id);
+		debug_printf(DEBUG, "Freeing delta block with id %u/%u\n", (db->id >> 15) & 1, (0x7FFF & db->id));
 		tmp = db->next;
 		FREE_MM(db);
 		db = tmp;
@@ -175,8 +175,8 @@ void zapi_apply_delta(BYTE* zapi_page, page_opts* p_opts, BYTE* original, BYTE* 
 	zapi_delta_block* dp = ((zapi_page_header*)zapi_page)->delta_head;
 	while(dp) {
 		// check for match
-		if(dp->id == block_id) {
-			debug_printf(DEBUG, "Applying delta given original block #%u!\n", dp->id);
+		if((0x7FFF & dp->id) == block_id) {
+			debug_printf(DEBUG, "Applying delta given original block #%u/%u!\n", (dp->id >> 15) & 1, (0x7FFF & dp->id));
 			decode_packed(original, p_opts->block_sz, (BYTE*)dp + sizeof(zapi_delta_block), ret);
 			return;
 		}
@@ -193,11 +193,14 @@ static void apply_delta(zapi_page_header* h, BYTE* data, page_opts* p_opts, unsi
 
 	zapi_delta_block* dp = h->delta_head;
 	while(dp) {
-		debug_printf(DEBUG, "Applying delta block #%u to decompression!\n", dp->id);
-		tmp = dp->id - start;
+		debug_printf(DEBUG, "Applying delta block #%u/%u to decompression!\n", (dp->id >> 15) & 1, (0x7FFF & dp->id));
+		tmp = (0x7FFF & dp->id) - start;
 		if(tmp >= 0 && tmp < blocks) {
 			addr = data + p_opts->block_sz * tmp;
-			decode_packed(addr, p_opts->block_sz, (BYTE*)dp + sizeof(zapi_delta_block), addr);
+			if(dp->id >> 15)
+				memset(addr, 0, p_opts->block_sz);
+			else
+				decode_packed(addr, p_opts->block_sz, (BYTE*)dp + sizeof(zapi_delta_block), addr);
 		}
 		dp = dp->next;
 	}
@@ -312,7 +315,7 @@ static void update_delta_llist(zapi_page_header* h, BYTE* src, unsigned size, un
 
 	// update/append to list
 	zapi_delta_block** next = &(h->delta_head);
-	while(*next && (*next)->id != id)
+	while(*next && (0x7FFF & (*next)->id) != (0x7FFF & id))
 		next = &((*next)->next);
 	db->next = (*next) ? (*next)->next : NULL;
 	
@@ -348,7 +351,7 @@ static unsigned compress_page_internal(LZ4_stream_t* stream, BYTE* src, BYTE* de
 	return (h->t_size += (c_dest - dest));
 }
 
-static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) {
+/*static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) {
 	zapi_page_header* h = (zapi_page_header*) old_page;
 	zapi_page_header* new_h = (zapi_page_header*) new_page;
 
@@ -356,10 +359,10 @@ static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) 
 	zapi_delta_block** next = &(h->delta_head), *tmp;
 
 	while(*next) {
-		if((*next)->id >= free_blk_indx) {
+		if((0x7FFF & (*next)->id) >= free_blk_indx) {
 			tmp = *next;
 			(*next) = (*next)->next;
-			FREE_MM(tmp); debug_printf(INFO, "Freed delta block %u\n", tmp->id);
+			FREE_MM(tmp); debug_printf(INFO, "Freed delta block %u\n", (0x7FFF & tmp->id));
 		} else {
 			new_h->t_size += *(((BYTE*)*next)+sizeof(zapi_delta_block)) + 1 + sizeof(zapi_delta_block);
 			next = &((*next)->next);
@@ -369,7 +372,7 @@ static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) 
 	// move delta to new page
 	new_h->delta_head = h->delta_head;
 	h->delta_head = NULL;
-}
+}*/
 
 /*static unsigned partial_recompression(page_opts* p_opts, unsigned prc_after_blk, BYTE* data, BYTE* prc_page, BYTE* old_page, unsigned cur_comp_sz, unsigned thres) {
 	unsigned new_size;
@@ -395,20 +398,13 @@ static void move_deltas(BYTE* old_page, BYTE* new_page, unsigned free_blk_indx) 
 	return new_size;
 }*/
 
-unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* decompression_buffer, unsigned start_block, unsigned del_blocks) {
+void zapi_delete_block(BYTE* page, unsigned start_block, unsigned del_blocks) {
 	int i;
 
-	// decompress page
+	// get header and add null deltas
 	zapi_page_header* h = (zapi_page_header*) page;
-	LZ4_streamDecode_t* const lz4_sd = LZ4_createStreamDecode();
-	decompress_page_internal(h, page + sizeof(zapi_page_header), decompression_buffer, p_opts, lz4_sd, 0, p_opts->blocks); // TODO don't need to decompress if connected to last block
-	apply_delta(h, decompression_buffer, p_opts, 0, p_opts->blocks);
-	LZ4_freeStreamDecode(lz4_sd);
-
-	// delete the data
-	memset(decompression_buffer + start_block * p_opts->block_sz, 0, del_blocks * p_opts->block_sz);
-
-	return 1;
+	for(i = 0; i < del_blocks; i++)
+		update_delta_llist(h, NULL, 0, 0x8000 | (start_block + i));
 }
 
 

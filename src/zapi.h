@@ -124,7 +124,7 @@ unsigned zapi_update_block(BYTE* src, BYTE* page, unsigned block, page_opts* p_o
  * 
  * NOTE: scratch will always contain the decompressed page with the specified blocks cleared
  */
-unsigned zapi_delete_block(BYTE* page, page_opts* p_opts, BYTE* decompression_buffer, unsigned start_block, unsigned del_blocks);
+void zapi_delete_block(BYTE* page, unsigned start_block, unsigned del_blocks);
 
 /*
  * Will likely be renamed in the future.
